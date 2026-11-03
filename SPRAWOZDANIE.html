@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<title>Sprawozdanie - Laboratorium 2</title>
+<style>
+
+body {
+    font-family: 'Segoe UI', Arial, sans-serif;
+    line-height: 1.5;
+    color: #222;
+    margin: 40px auto;
+    max-width: 900px;
+    padding: 0 20px;
+}
+h1 { color: #1a365d; border-bottom: 2px solid #2b6cb0; padding-bottom: 8px; margin-top: 30px; font-size: 24px; }
+h2 { color: #2c5282; font-size: 20px; margin-top: 25px; }
+h3 { color: #2b6cb0; font-size: 17px; margin-top: 20px; border-bottom: 1px solid #e2e8f0; padding-bottom: 4px; }
+h4 { color: #4a5568; font-size: 15px; margin-top: 15px; }
+table {
+    border-collapse: collapse;
+    width: 100%;
+    margin: 15px 0;
+    font-size: 13px;
+}
+th, td {
+    border: 1px solid #cbd5e0;
+    padding: 6px 10px;
+    text-align: left;
+}
+th {
+    background-color: #ebf8ff;
+    color: #2b6cb0;
+    font-weight: 600;
+}
+tr:nth-child(even) {
+    background-color: #f7fafc;
+}
+img {
+    max-width: 100%;
+    height: auto;
+    display: block;
+    margin: 15px auto;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+}
+code {
+    background-color: #edf2f7;
+    padding: 2px 5px;
+    border-radius: 3px;
+    font-family: Consolas, monospace;
+    font-size: 12px;
+}
+ul, ol {
+    padding-left: 20px;
+}
+li {
+    margin-bottom: 4px;
+}
+hr {
+    border: 0;
+    border-top: 1px solid #e2e8f0;
+    margin: 25px 0;
+}
+@media print {
+    body {
+        margin: 10mm;
+        padding: 0;
+        font-size: 11pt;
+    }
+    table {
+        page-break-inside: avoid;
+        font-size: 10pt;
+    }
+    img {
+        page-break-inside: avoid;
+        max-width: 90%;
+    }
+    h1, h2, h3, h4 {
+        page-break-after: avoid;
+    }
+}
+
+</style>
+</head>
+<body>
+<h1>Przetwarzanie języka naturalnego – Laboratorium 2</h1>
+<h2>Temat: Od tekstu do tokenów: n-gramy, sprowadzanie form, odległość edycyjna i tokenizacja podsłowowa</h2>
+<hr />
+<h3>Środowisko uruchomieniowe</h3>
+<p>Wszystkie obliczenia i testy zostały wykonane lokalnie przy użyciu języka Python oraz bibliotek:
+- <code>nltk</code> – tokenizacja, podział na zdania, n-gramy, stemmery (Porter, Lancaster, Snowball), lematyzator WordNet,
+- <code>spacy</code> (model <code>pl_core_news_sm</code>) oraz <code>morfeusz2</code> – dedykowane narzędzia do analizy morfologicznej, lematyzacji i tagowania morfosyntaktycznego języka polskiego,
+- <code>stop-words</code> – lista polskich słów funkcyjnych,
+- <code>textdistance</code> – obliczanie miar odległości i podobieństwa napisów,
+- <code>tokenizers</code> oraz <code>transformers</code> (Hugging Face) – trening własnego tokenizatora BPE oraz porównanie z modelami gotowymi (<code>gpt2</code>, <code>allegro/herbert-base-cased</code>, <code>speakleash/Bielik-1.5B-v3</code>),
+- <code>matplotlib</code> – wizualizacja histogramów n-gramów oraz wykresów porównawczych.</p>
+<p>Materiały źródłowe:
+- Korpus polski: <em>Pan Tadeusz</em> (Adam Mickiewicz, format <code>.txt</code>, pobrany z Wolnych Lektur),
+- Korpus angielski: <em>Hamlet</em> (William Shakespeare, format <code>.txt</code>, pobrany z Project Gutenberg).</p>
+<hr />
+<h3>Część A: n-gramy w tekście polskim</h3>
+<h4>1. Wczytanie i przetwarzanie tekstu</h4>
+<p>Tekst utworu <em>Pan Tadeusz</em> został wczytany z pliku. Aby nie zaburzyć struktury wypowiedzi, podział na zdania został zrealizowany na surowym tekście przed usunięciem znaków interpunkcyjnych. Następnie tekst oczyszczono: zamieniono litery na małe, usunięto znaki specjalne i interpunkcję oraz zwinięto wielokrotne białe znaki do pojedynczych spacji.</p>
+<p>Wyniki podstawowych statystyk tekstu:
+- <strong>Liczba zdań:</strong> 3839
+- <strong>Liczba wyrazów:</strong> 68 422
+- <strong>Liczba unigramów:</strong> 68 422
+- <strong>Liczba bigramów:</strong> 68 421
+- <strong>Liczba trigramów:</strong> 68 420</p>
+<h4>2. Najczęstsze n-gramy słowne</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">Lp.</th>
+<th style="text-align: left;">Unigramy (częstość)</th>
+<th style="text-align: left;">Bigramy (częstość)</th>
+<th style="text-align: left;">Trigramy (częstość)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">1</td>
+<td style="text-align: left;"><code>i</code> (2134)</td>
+<td style="text-align: left;"><code>się w</code> (76)</td>
+<td style="text-align: left;"><code>się z nim</code> (8)</td>
+</tr>
+<tr>
+<td style="text-align: center;">2</td>
+<td style="text-align: left;"><code>w</code> (1699)</td>
+<td style="text-align: left;"><code>i z</code> (72)</td>
+<td style="text-align: left;"><code>hejże na soplicę</code> (6)</td>
+</tr>
+<tr>
+<td style="text-align: center;">3</td>
+<td style="text-align: left;"><code>się</code> (1498)</td>
+<td style="text-align: left;"><code>się z</code> (68)</td>
+<td style="text-align: left;"><code>idąc kłaniał się</code> (5)</td>
+</tr>
+<tr>
+<td style="text-align: center;">4</td>
+<td style="text-align: left;"><code>z</code> (1389)</td>
+<td style="text-align: left;"><code>się i</code> (61)</td>
+<td style="text-align: left;"><code>za mych czasów</code> (5)</td>
+</tr>
+<tr>
+<td style="text-align: center;">5</td>
+<td style="text-align: left;"><code>na</code> (1309)</td>
+<td style="text-align: left;"><code>i w</code> (55)</td>
+<td style="text-align: left;"><code>ostatniego z horeszków</code> (5)</td>
+</tr>
+<tr>
+<td style="text-align: center;">6</td>
+<td style="text-align: left;"><code>nie</code> (938)</td>
+<td style="text-align: left;"><code>się na</code> (47)</td>
+<td style="text-align: left;"><code>z drugiej strony</code> (5)</td>
+</tr>
+<tr>
+<td style="text-align: center;">7</td>
+<td style="text-align: left;"><code>jak</code> (579)</td>
+<td style="text-align: left;"><code>i na</code> (39)</td>
+<td style="text-align: left;"><code>raz po raz</code> (5)</td>
+</tr>
+<tr>
+<td style="text-align: center;">8</td>
+<td style="text-align: left;"><code>do</code> (566)</td>
+<td style="text-align: left;"><code>co się</code> (38)</td>
+<td style="text-align: left;"><code>a na to</code> (5)</td>
+</tr>
+<tr>
+<td style="text-align: center;">9</td>
+<td style="text-align: left;"><code>a</code> (565)</td>
+<td style="text-align: left;"><code>i tak</code> (36)</td>
+<td style="text-align: left;"><code>pro publico bono</code> (5)</td>
+</tr>
+<tr>
+<td style="text-align: center;">10</td>
+<td style="text-align: left;"><code>że</code> (555)</td>
+<td style="text-align: left;"><code>na to</code> (30)</td>
+<td style="text-align: left;"><code>w domu sędziego</code> (4)</td>
+</tr>
+</tbody>
+</table>
+<h4>3. Histogramy rozkładu n-gramów</h4>
+<p>Poniższy wykres przedstawia rozkład 10 najczęstszych unigramów, bigramów i trigramów:</p>
+<p><img alt="Histogram n-gramów w tekście polskim" src="wykres_czesc_a.png" /></p>
+<h4>4. Wnioski z analizy n-gramów</h4>
+<ol>
+<li><strong>Dominacja w bigramach:</strong>
+   W zbiorze najczęstszych bigramów dominują wyłącznie słowa funkcyjne (<em>stop words</em>): spójniki (<code>i</code>, <code>a</code>), przyimki (<code>w</code>, <code>z</code>, <code>na</code>, <code>do</code>) oraz zaimek zwrotny <code>się</code>. Pary te tworzą łączniki składniowe, lecz nie niosą samodzielnej treści semantycznej.</li>
+<li><strong>Obecność zwrotów autorskich w trigramach:</strong>
+   W przeciwieństwie do bigramów, w trigramach pojawiają się charakterystyczne motywy fabularne i zwroty typowe dla stylu Mickiewicza:</li>
+<li><code>hejże na soplicę</code> – zawołanie szlachty i Gerwazego podczas zajazdu,</li>
+<li><code>ostatniego z horeszków</code> – wątek sporu o zamek Horeszków,</li>
+<li><code>za mych czasów</code> – gawędziarski, nostalgiczny ton starszego pokolenia (Sędzia, Podkomorzy),</li>
+<li><code>w domu sędziego</code> – określenie głównego miejsca akcji,</li>
+<li><code>pro publico bono</code> – łaciński makaronizm charakterystyczny dla szlacheckiego języka epoki.</li>
+<li><strong>Różnica między rozkładem unigramów a bigramów:</strong></li>
+<li>Unigramy wykazują silną koncentrację opisywaną prawem Zipfa: najczęstsze słowo (<code>i</code>) występuje aż 2134 razy, podczas gdy 10. słowo (<code>że</code>) ma 555 wystąpień.</li>
+<li>W bigramach maksymalna częstość gwałtownie spada – najczęstszy bigram (<code>się w</code>) ma zaledwie 76 wystąpień (spadek o blisko 96% względem unigramu). Przestrzeń kombinacji par słów rośnie kwadratowo ($V^2$), przez co rozkład bigramów jest silnie rozproszony (<em>długi ogon</em>), a większość par występuje w tekście tylko 1 lub 2 razy.</li>
+</ol>
+<hr />
+<h3>Część B: Sprowadzanie form w tekście angielskim</h3>
+<h4>1. Wybrane zdania z dramatu <em>Hamlet</em> (Akt I, Scena 1)</h4>
+<ol>
+<li><em>"Nay, answer me: stand, and unfold yourself."</em></li>
+<li><em>"You come most carefully upon your hour."</em></li>
+<li><em>"'Tis now struck twelve; get thee to bed, Francisco."</em></li>
+<li><em>"For this relief much thanks: 'tis bitter cold, And I am sick at heart."</em></li>
+<li><em>"If you do meet Horatio and Marcellus, The rivals of my watch, bid them make haste."</em></li>
+</ol>
+<h4>2. Wyniki tokenizacji, stemmingu (Snowball) i lematyzacji (WordNet)</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Token</th>
+<th style="text-align: left;">Rdzeń (SnowballStemmer)</th>
+<th style="text-align: left;">Lemat (WordNetLemmatizer)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>Nay</code></td>
+<td style="text-align: left;"><code>nay</code></td>
+<td style="text-align: left;"><code>nay</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>answer</code></td>
+<td style="text-align: left;"><code>answer</code></td>
+<td style="text-align: left;"><code>answer</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>me</code></td>
+<td style="text-align: left;"><code>me</code></td>
+<td style="text-align: left;"><code>me</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>stand</code></td>
+<td style="text-align: left;"><code>stand</code></td>
+<td style="text-align: left;"><code>stand</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>unfold</code></td>
+<td style="text-align: left;"><code>unfold</code></td>
+<td style="text-align: left;"><code>unfold</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>yourself</code></td>
+<td style="text-align: left;"><code>yourself</code></td>
+<td style="text-align: left;"><code>yourself</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>You</code></td>
+<td style="text-align: left;"><code>you</code></td>
+<td style="text-align: left;"><code>you</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>come</code></td>
+<td style="text-align: left;"><code>come</code></td>
+<td style="text-align: left;"><code>come</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>most</code></td>
+<td style="text-align: left;"><code>most</code></td>
+<td style="text-align: left;"><code>most</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>carefully</code></strong></td>
+<td style="text-align: left;"><strong><code>care</code></strong></td>
+<td style="text-align: left;"><strong><code>carefully</code></strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>upon</code></td>
+<td style="text-align: left;"><code>upon</code></td>
+<td style="text-align: left;"><code>upon</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>your</code></td>
+<td style="text-align: left;"><code>your</code></td>
+<td style="text-align: left;"><code>your</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>hour</code></td>
+<td style="text-align: left;"><code>hour</code></td>
+<td style="text-align: left;"><code>hour</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>struck</code></td>
+<td style="text-align: left;"><code>struck</code></td>
+<td style="text-align: left;"><code>struck</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>twelve</code></strong></td>
+<td style="text-align: left;"><strong><code>twelv</code></strong></td>
+<td style="text-align: left;"><strong><code>twelve</code></strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>get</code></td>
+<td style="text-align: left;"><code>get</code></td>
+<td style="text-align: left;"><code>get</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>thee</code></td>
+<td style="text-align: left;"><code>thee</code></td>
+<td style="text-align: left;"><code>thee</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>bed</code></td>
+<td style="text-align: left;"><code>bed</code></td>
+<td style="text-align: left;"><code>bed</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Francisco</code></td>
+<td style="text-align: left;"><code>francisco</code></td>
+<td style="text-align: left;"><code>francisco</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>relief</code></td>
+<td style="text-align: left;"><code>relief</code></td>
+<td style="text-align: left;"><code>relief</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>much</code></td>
+<td style="text-align: left;"><code>much</code></td>
+<td style="text-align: left;"><code>much</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>thanks</code></strong></td>
+<td style="text-align: left;"><strong><code>thank</code></strong></td>
+<td style="text-align: left;"><strong><code>thanks</code></strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>bitter</code></td>
+<td style="text-align: left;"><code>bitter</code></td>
+<td style="text-align: left;"><code>bitter</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>cold</code></td>
+<td style="text-align: left;"><code>cold</code></td>
+<td style="text-align: left;"><code>cold</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>sick</code></td>
+<td style="text-align: left;"><code>sick</code></td>
+<td style="text-align: left;"><code>sick</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>heart</code></td>
+<td style="text-align: left;"><code>heart</code></td>
+<td style="text-align: left;"><code>heart</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>meet</code></td>
+<td style="text-align: left;"><code>meet</code></td>
+<td style="text-align: left;"><code>meet</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Horatio</code></td>
+<td style="text-align: left;"><code>horatio</code></td>
+<td style="text-align: left;"><code>horatio</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Marcellus</code></td>
+<td style="text-align: left;"><code>marcellus</code></td>
+<td style="text-align: left;"><code>marcellus</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>rivals</code></td>
+<td style="text-align: left;"><code>rival</code></td>
+<td style="text-align: left;"><code>rival</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>watch</code></td>
+<td style="text-align: left;"><code>watch</code></td>
+<td style="text-align: left;"><code>watch</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>bid</code></td>
+<td style="text-align: left;"><code>bid</code></td>
+<td style="text-align: left;"><code>bid</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>them</code></td>
+<td style="text-align: left;"><code>them</code></td>
+<td style="text-align: left;"><code>them</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>make</code></td>
+<td style="text-align: left;"><code>make</code></td>
+<td style="text-align: left;"><code>make</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong><code>haste</code></strong></td>
+<td style="text-align: left;"><strong><code>hast</code></strong></td>
+<td style="text-align: left;"><strong><code>haste</code></strong></td>
+</tr>
+</tbody>
+</table>
+<h4>3. Wskazanie i analiza słów o różnych wynikach</h4>
+<p>W analizowanych zdaniach zidentyfikowano słowa, dla których stemming i lematyzacja dały odmienne rezultaty:
+1. <strong><code>carefully</code></strong> $\to$ rdzeń: <code>care</code> | lemat: <code>carefully</code>
+   - Stemmer odciął przyrostek przysłówkowy <code>-fully</code> / <code>-ly</code>, sprowadzając wyraz do bazy czasownikowo-rzeczownikowej. Lematyzator zachował formę <code>carefully</code>, ponieważ przysłówek stanowi odrębne hasło słownikowe.
+2. <strong><code>thanks</code></strong> $\to$ rdzeń: <code>thank</code> | lemat: <code>thanks</code>
+   - Stemmer potraktował końcówkę <code>-s</code> jako fleksyjną końcówkę liczby mnogiej/3. osoby czasownika i usunął ją (<code>thank</code>). Lematyzator rozpoznał wyraz jako rzeczownik w liczbie mnogiej (plurale tantum) i zachował postać hasłową <code>thanks</code>.
+3. <strong><code>haste</code></strong> $\to$ rdzeń: <code>hast</code> | lemat: <code>haste</code>
+   - Stemmer zastosował regułę odcinania końcowego niemego <code>-e</code>, w wyniku czego powstał sztuczny ciąg liter <code>hast</code>. Lematyzator odwołał się do słownika WordNet i pozostawił poprawny wyraz <code>haste</code>.</p>
+<hr />
+<h3>Część C: Odległość edycyjna Levenshteina</h3>
+<p>Badane napisy:
+- $S_1$: <em>„Ala ma kota”</em> (długość: 11 znaków ze spacjami)
+- $S_2$: <em>„Ala posiada kota”</em> (długość: 16 znaków ze spacjami)</p>
+<h4>Wyniki z biblioteki <code>textdistance</code>:</h4>
+<ul>
+<li><strong>Odległość Levenshteina:</strong> <code>6</code></li>
+<li><strong>Podobieństwo bezwzględne:</strong> <code>10</code></li>
+<li><strong>Znormalizowana odległość:</strong> <code>0.3750</code></li>
+<li><strong>Znormalizowane podobieństwo:</strong> <code>0.6250</code></li>
+</ul>
+<h4>Rozpisanie operacji edycyjnych:</h4>
+<p>Wspólny prefiks <em>„Ala ”</em> (4 znaki) oraz sufiks <em>„ kota”</em> (5 znaków) są identyczne i mają łączny koszt równy 0.
+Różnica zachodzi wyłącznie pomiędzy słowami <code>ma</code> (2 znaki) a <code>posiada</code> (7 znaków).</p>
+<p>Minimalna sekwencja przekształcenia wyznaczona przez algorytm programowania dynamicznego:
+1. Zamiana (substytucja) litery <code>'m'</code> na <code>'p'</code> (koszt = 1)
+2. Wstawienie (insercja) litery <code>'o'</code> (koszt = 1)
+3. Wstawienie (insercja) litery <code>'s'</code> (koszt = 1)
+4. Wstawienie (insercja) litery <code>'i'</code> (koszt = 1)
+5. Dopasowanie litery <code>'a'</code> (koszt = 0)
+6. Wstawienie (insercja) litery <code>'d'</code> (koszt = 1)
+7. Wstawienie (insercja) litery <code>'a'</code> (koszt = 1)</p>
+<p><strong>Podsumowanie:</strong> 1 zamiana + 5 wstawień + 0 usunięć = <strong>dokładnie 6 operacji edycyjnych</strong>. Wykorzystanie wspólnej litery <code>a</code> pozwala uzyskać koszt 6 zamiast 9 (co miałoby miejsce przy całkowitym usunięciu <code>ma</code> i wstawieniu całego słowa <code>posiada</code>).</p>
+<hr />
+<h3>Część D: Porównanie stemmerów (Porter vs Lancaster)</h3>
+<h4>1. Zestawienie wyników dla słów zidentyfikowanych w tekście <em>Hamleta</em></h4>
+<p>Poniższe słowa zostały wyekstrahowane bezpośrednio z pliku <code>texts/hamlet-william-shakespeare.txt</code> (w nawiasie podano liczbę wystąpień w korpusie dramatu):</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Słowo (z korpusu Hamleta)</th>
+<th style="text-align: left;">PorterStemmer</th>
+<th style="text-align: left;">LancasterStemmer</th>
+<th style="text-align: center;">Czy różne?</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>father</code> (59 wystąpień)</td>
+<td style="text-align: left;"><code>father</code></td>
+<td style="text-align: left;"><code>fath</code></td>
+<td style="text-align: center;">Tak</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>heaven</code> (57 wystąpień)</td>
+<td style="text-align: left;"><code>heaven</code></td>
+<td style="text-align: left;"><code>heav</code></td>
+<td style="text-align: center;">Tak</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>nature</code> (23 wystąpienia)</td>
+<td style="text-align: left;"><code>natur</code></td>
+<td style="text-align: left;"><code>nat</code></td>
+<td style="text-align: center;">Tak</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>matter</code> (21 wystąpień)</td>
+<td style="text-align: left;"><code>matter</code></td>
+<td style="text-align: left;"><code>mat</code></td>
+<td style="text-align: center;">Tak</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>general</code> (14 wystąpień)</td>
+<td style="text-align: left;"><code>gener</code></td>
+<td style="text-align: left;"><code>gen</code></td>
+<td style="text-align: center;">Tak</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>history</code> (7 wystąpień)</td>
+<td style="text-align: left;"><code>histori</code></td>
+<td style="text-align: left;"><code>hist</code></td>
+<td style="text-align: center;">Tak</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>philosophy</code> (3 wystąpienia)</td>
+<td style="text-align: left;"><code>philosophi</code></td>
+<td style="text-align: left;"><code>philosoph</code></td>
+<td style="text-align: center;">Tak</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>friendship</code> (2 wystąpienia)</td>
+<td style="text-align: left;"><code>friendship</code></td>
+<td style="text-align: left;"><code>friend</code></td>
+<td style="text-align: center;">Tak</td>
+</tr>
+</tbody>
+</table>
+<p>W całym korpusie <em>Hamleta</em> zidentyfikowano łącznie <strong>1923 unikalne słowa</strong>, dla których algorytmy te wygenerowały różne rdzenie.</p>
+<h4>2. Ocena sensowności wyników</h4>
+<ul>
+<li><strong>PorterStemmer</strong> stosuje 5-etapowy proces kaskadowy o umiarkowanej agresywności. Obcina standardowe końcówki fleksyjne i słowotwórcze, zachowując bazę morfologiczną słowa (<code>father</code> $\to$ <code>father</code>, <code>nature</code> $\to$ <code>natur</code>, <code>general</code> $\to$ <code>gener</code>).</li>
+<li><strong>LancasterStemmer</strong> działa iteracyjnie na bazie ponad 120 reguł wykonywanych w pętli. Charakteryzuje się nadmierną agresywnością, obcinając słowa do 2-3 liter (<code>nature</code> $\to$ <code>nat</code>, <code>matter</code> $\to$ <code>mat</code>, <code>general</code> $\to$ <code>gen</code>, <code>history</code> $\to$ <code>hist</code>).</li>
+<li><strong>Wniosek:</strong> Wyniki PorterStemmera są znacznie bardziej zrównoważone. Drastyczne skracanie w Lancasterze niszczy unikalność leksemów – rdzeń <code>mat</code> mógłby równie dobrze pochodzić od <em>matter</em>, <em>material</em>, <em>matrix</em> czy <em>match</em>, co w systemach wyszukiwawczych skutkuje dużą liczbą fałszywych dopasowań (<em>false positives</em>).</li>
+</ul>
+<h4>3. Przykłady zjawisk overstemmingu i understemmingu</h4>
+<ul>
+<li><strong>Overstemming (nadmierne obcinanie):</strong></li>
+<li>Para: <code>university</code> (uniwersytet) i <code>universe</code> (wszechświat).<ul>
+<li>Porter: oba słowa $\to$ <code>univers</code></li>
+<li>Lancaster: oba słowa $\to$ <code>univers</code>
+Dwa semantycznie niezwiązane słowa otrzymują ten sam rdzeń.</li>
+</ul>
+</li>
+<li>Para: <code>organization</code> i <code>organ</code>.<ul>
+<li>Porter: oba słowa $\to$ <code>organ</code></li>
+<li>Lancaster: oba słowa $\to$ <code>org</code></li>
+</ul>
+</li>
+<li><strong>Understemming (niedostateczne obcinanie):</strong></li>
+<li>Para: <code>europe</code> i <code>european</code>.<ul>
+<li>Porter: <code>europe</code> $\to$ <code>europ</code> | <code>european</code> $\to$ <code>european</code> (brak zbieżności do wspólnego rdzenia).</li>
+</ul>
+</li>
+<li>Para: <code>matrix</code> i <code>matrices</code>.<ul>
+<li>Porter: <code>matrix</code> $\to$ <code>matrix</code> | <code>matrices</code> $\to$ <code>matric</code> (reguła nie radzi sobie z nieregularną wymianą <code>x</code> $\to$ <code>c</code>).</li>
+</ul>
+</li>
+</ul>
+<hr />
+<h3>Część E: Narzędzia dla języka polskiego</h3>
+<h4>1. Analiza fragmentu tekstu modelem spaCy oraz analizatorem Morfeusz2</h4>
+<p>Przetwarzany fragment: <em>"Litwo! Ojczyzno moja! ty jesteś jak zdrowie. Ile cię trzeba cenić, ten tylko się dowie, kto cię stracił."</em></p>
+<blockquote>
+<p><strong>Uwaga metodologiczna:</strong>
+Standardowe biblioteki (NLTK, spaCy) nie posiadają dedykowanego, gotowego stemmera dla języka polskiego (Snowball nie obsługuje polskiego, a spaCy realizuje wyłącznie lematyzację). 
+W niniejszym ćwiczeniu zastosowano:
+1. <strong><code>spaCy</code> (model <code>pl_core_news_sm</code>)</strong> – tokenizacja i lematyzacja oparta na sieciach neuronowych.
+2. <strong><code>Morfeusz2</code></strong> – oficjalny, dedykowany polszczyźnie analizator morfologiczny oparty na Słowniku Gramatycznym Języka Polskiego (SGJP), zwracający lematy słownikowe oraz precyzyjne znaczniki morfosyntaktyczne.
+3. <strong>Prosty stemmer heurystyczny</strong> – regułowy algorytm odcinający sufiksy, zaimplementowany celowo, aby skonfrontować mechaniczne odcinanie końcówek z profesjonalną lematyzacją słownikową.</p>
+</blockquote>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Token</th>
+<th style="text-align: left;">Lemat (spaCy)</th>
+<th style="text-align: left;">Lemat (Morfeusz2)</th>
+<th style="text-align: left;">Tag morfosyntaktyczny (Morfeusz2)</th>
+<th style="text-align: left;">Rdzeń (heurystyczny)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>Litwo</code></td>
+<td style="text-align: left;"><code>litwo</code></td>
+<td style="text-align: left;"><strong><code>litwa</code></strong></td>
+<td style="text-align: left;"><code>subst:sg:voc:f</code></td>
+<td style="text-align: left;"><code>litw</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Ojczyzno</code></td>
+<td style="text-align: left;"><code>ojczyzno</code></td>
+<td style="text-align: left;"><strong><code>ojczyzna</code></strong></td>
+<td style="text-align: left;"><code>subst:sg:voc:f</code></td>
+<td style="text-align: left;"><code>ojczyzn</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>moja</code></td>
+<td style="text-align: left;"><code>mój</code></td>
+<td style="text-align: left;"><code>moja</code></td>
+<td style="text-align: left;"><code>subst:sg:nom:f</code></td>
+<td style="text-align: left;"><code>moj</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ty</code></td>
+<td style="text-align: left;"><code>ty</code></td>
+<td style="text-align: left;"><code>ty</code></td>
+<td style="text-align: left;"><code>ppron12:sg:nom:m1.m2.m3.f.n:sec</code></td>
+<td style="text-align: left;"><code>ty</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>jesteś</code></td>
+<td style="text-align: left;"><code>być</code></td>
+<td style="text-align: left;"><code>być</code></td>
+<td style="text-align: left;"><code>fin:sg:sec:imperf</code></td>
+<td style="text-align: left;"><code>jesteś</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>jak</code></td>
+<td style="text-align: left;"><code>jak</code></td>
+<td style="text-align: left;"><code>jak</code></td>
+<td style="text-align: left;"><code>conj</code></td>
+<td style="text-align: left;"><code>jak</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>zdrowie</code></td>
+<td style="text-align: left;"><code>zdrowie</code></td>
+<td style="text-align: left;"><code>zdrowie</code></td>
+<td style="text-align: left;"><code>subst:sg:nom.acc.voc:n:ncol</code></td>
+<td style="text-align: left;"><code>zdr</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>Ile</code></td>
+<td style="text-align: left;"><code>ile</code></td>
+<td style="text-align: left;"><code>iż</code></td>
+<td style="text-align: left;"><code>subst:sg:loc:m2</code></td>
+<td style="text-align: left;"><code>ile</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>cię</code></td>
+<td style="text-align: left;"><code>ty</code></td>
+<td style="text-align: left;"><code>ty</code></td>
+<td style="text-align: left;"><code>ppron12:sg:acc:m1.m2.m3.f.n:sec:nakc</code></td>
+<td style="text-align: left;"><code>cię</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>trzeba</code></td>
+<td style="text-align: left;"><code>trzeba</code></td>
+<td style="text-align: left;"><code>trzeba</code></td>
+<td style="text-align: left;"><code>pred</code></td>
+<td style="text-align: left;"><code>trzeb</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>cenić</code></td>
+<td style="text-align: left;"><code>cenić</code></td>
+<td style="text-align: left;"><code>cenić</code></td>
+<td style="text-align: left;"><code>inf:imperf</code></td>
+<td style="text-align: left;"><code>cenić</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>ten</code></td>
+<td style="text-align: left;"><code>ten</code></td>
+<td style="text-align: left;"><code>ten</code></td>
+<td style="text-align: left;"><code>adj:sg:acc:m3:pos</code></td>
+<td style="text-align: left;"><code>ten</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>tylko</code></td>
+<td style="text-align: left;"><code>tylko</code></td>
+<td style="text-align: left;"><code>tylko</code></td>
+<td style="text-align: left;"><code>conj</code></td>
+<td style="text-align: left;"><code>tylk</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>się</code></td>
+<td style="text-align: left;"><code>się</code></td>
+<td style="text-align: left;"><code>się</code></td>
+<td style="text-align: left;"><code>part</code></td>
+<td style="text-align: left;"><code>się</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>dowie</code></td>
+<td style="text-align: left;"><code>dowiedzieć</code></td>
+<td style="text-align: left;"><code>dowiedzieć</code></td>
+<td style="text-align: left;"><code>fin:sg:ter:perf</code></td>
+<td style="text-align: left;"><code>dow</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>kto</code></td>
+<td style="text-align: left;"><code>kto</code></td>
+<td style="text-align: left;"><code>kto</code></td>
+<td style="text-align: left;"><code>subst:sg:nom:m1</code></td>
+<td style="text-align: left;"><code>kto</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>cię</code></td>
+<td style="text-align: left;"><code>ty</code></td>
+<td style="text-align: left;"><code>ty</code></td>
+<td style="text-align: left;"><code>ppron12:sg:acc:m1.m2.m3.f.n:sec:nakc</code></td>
+<td style="text-align: left;"><code>cię</code></td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>stracił</code></td>
+<td style="text-align: left;"><code>stracić</code></td>
+<td style="text-align: left;"><code>stracić</code></td>
+<td style="text-align: left;"><code>praet:sg:m1.m2.m3:perf</code></td>
+<td style="text-align: left;"><code>stracił</code></td>
+</tr>
+</tbody>
+</table>
+<p>Zarówno spaCy, jak i Morfeusz2 sprowadzają formy fleksyjne do haseł słownikowych (<code>jesteś</code> $\to$ <code>być</code>, <code>dowie</code> $\to$ <code>dowiedzieć</code>). Morfeusz2 wykazał wyższość przy formach wołacza (<code>Litwo</code> $\to$ mianownik <code>litwa</code>; <code>Ojczyzno</code> $\to$ mianownik <code>ojczyzna</code>), podczas gdy heurystyczny stemmer odciął jedynie końcówki (<code>litw</code>, <code>ojczyzn</code>, <code>dow</code>), tworząc formy ułomne.</p>
+<h4>2. Działanie angielskiego stemmera na polskich słowach</h4>
+<p>Zastosowanie <code>SnowballStemmer("english")</code> do słów języka polskiego dało następujące wyniki:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Słowo polskie</th>
+<th style="text-align: left;">Wynik stemmera EN</th>
+<th style="text-align: left;">Zdiagnozowany błąd</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>książkami</code></td>
+<td style="text-align: left;"><code>książkami</code></td>
+<td style="text-align: left;">Brak reakcji – końcówka <code>-ami</code> nie istnieje w regułach angielskich.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>chłopcami</code></td>
+<td style="text-align: left;"><code>chłopcami</code></td>
+<td style="text-align: left;">Brak reakcji – końcówka <code>-ami</code> zignorowana.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>samochodami</code></td>
+<td style="text-align: left;"><code>samochodami</code></td>
+<td style="text-align: left;">Brak reakcji – brak obsługi polskiej fleksji.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>warszawie</code></td>
+<td style="text-align: left;"><code>warszawi</code></td>
+<td style="text-align: left;">Usunięcie litery <code>e</code> z końcówki według reguły angielskiej.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>piękny</code></td>
+<td style="text-align: left;"><code>piękni</code></td>
+<td style="text-align: left;">Zamiana <code>y</code> $\to$ <code>i</code> – zamiast rdzenia powstała forma l. mn. męskoosobowej.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>zrobiliśmy</code></td>
+<td style="text-align: left;"><code>zrobiliśmi</code></td>
+<td style="text-align: left;">Zamiana <code>y</code> $\to$ <code>i</code> na końcu słowa, brak usunięcia końcówki czasu przeszłego.</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>uczniowie</code></td>
+<td style="text-align: left;"><code>uczniowi</code></td>
+<td style="text-align: left;">Usunięcie <code>-e</code> – zamiast rdzenia powstała forma celownika liczby pojedynczej.</td>
+</tr>
+</tbody>
+</table>
+<h4>3. Analiza biblioteki SnowballStemmer</h4>
+<p><code>SnowballStemmer</code> wspiera 16 języków: <em>arabic, danish, dutch, english, finnish, french, german, hungarian, italian, norwegian, porter, portuguese, romanian, russian, spanish, swedish</em>.</p>
+<p>Brak języka polskiego wynika ze specyfiki gramatycznej:
+- Język polski jest językiem silnie fleksyjnym (7 przypadków, bogata koniugacja).
+- Kluczową cechą polszczyzny są <strong>oboczności wewnątrzrdzeniowe</strong> (np. <em>ręka</em> $\to$ <em>rąk</em> $\to$ <em>ręce</em>; <em>miasto</em> $\to$ <em>mieście</em>; <em>wiózł</em> $\to$ <em>wieźć</em> $\to$ <em>wozi</em>).
+- Zwykłe odcinanie końcówek sufiksowych od prawej strony nie jest w stanie połączyć form z obocznościami do jednego rdzenia. Wymagana jest pełna analiza leksykalno-morfologiczna (jak w Morfeuszu i spaCy).</p>
+<hr />
+<h3>Część F: Więcej miar podobieństwa napisów</h3>
+<h4>1. Wybrane miary z biblioteki <code>textdistance</code></h4>
+<ol>
+<li><strong>Levenshtein:</strong> Klasyczna miara edycyjna – suma wstawień, usunięć i zamian znaków (koszt 1).</li>
+<li><strong>Damerau-Levenshtein:</strong> Rozszerzenie Levenshteina o transpozycję (zamianę miejscami dwóch sąsiednich znaków, np. <code>ba</code> $\leftrightarrow$ <code>ab</code> o koszcie 1 zamiast 2).</li>
+<li><strong>Jaro-Winkler:</strong> Miara podobieństwa w zakresie $[0, 1]$, wyliczająca zbieżność znaków w oknie dopasowania, liczbę transpozycji oraz premiująca wspólny prefiks (do 4 znaków).</li>
+<li><strong>Jaccard:</strong> Miara zbiorowa wyliczająca iloraz części wspólnej do sumy zbiorów znaków: $J(A, B) = \frac{|A \cap B|}{|A \cup B|}$. Całkowicie ignoruje kolejność znaków w słowie.</li>
+</ol>
+<h4>2. Wyniki porównania dla par testowych</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Opis testu</th>
+<th style="text-align: left;">Badana para ($S_1$ vs $S_2$)</th>
+<th style="text-align: center;">Levenshtein (odl. / pod.)</th>
+<th style="text-align: center;">Damerau-Lev. (odl. / pod.)</th>
+<th style="text-align: center;">Jaro-Winkler</th>
+<th style="text-align: center;">Jaccard</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;">Wymiana wyrazu</td>
+<td style="text-align: left;"><code>'Ala ma kota'</code> vs <code>'Ala posiada kota'</code></td>
+<td style="text-align: center;">6 (0.62)</td>
+<td style="text-align: center;">6 (0.62)</td>
+<td style="text-align: center;">0.847</td>
+<td style="text-align: center;">0.588</td>
+</tr>
+<tr>
+<td style="text-align: left;">Czeski błąd (transpozycja)</td>
+<td style="text-align: left;"><code>'kot'</code> vs <code>'kto'</code></td>
+<td style="text-align: center;">2 (0.33)</td>
+<td style="text-align: center;">1 (0.67)</td>
+<td style="text-align: center;">0.556</td>
+<td style="text-align: center;"><strong>1.000</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;">Brak litery (literówka)</td>
+<td style="text-align: left;"><code>'Warszawa'</code> vs <code>'Warszwa'</code></td>
+<td style="text-align: center;">1 (0.88)</td>
+<td style="text-align: center;">1 (0.88)</td>
+<td style="text-align: center;">0.946</td>
+<td style="text-align: center;">0.875</td>
+</tr>
+<tr>
+<td style="text-align: left;">Tylko znaki diakrytyczne</td>
+<td style="text-align: left;"><code>'żółć'</code> vs <code>'zolc'</code></td>
+<td style="text-align: center;">4 (0.00)</td>
+<td style="text-align: center;">4 (0.00)</td>
+<td style="text-align: center;">0.000</td>
+<td style="text-align: center;">0.000</td>
+</tr>
+<tr>
+<td style="text-align: left;">Odwrócony szyk liter</td>
+<td style="text-align: left;"><code>'pies'</code> vs <code>'seip'</code></td>
+<td style="text-align: center;">4 (0.00)</td>
+<td style="text-align: center;">3 (0.25)</td>
+<td style="text-align: center;">0.500</td>
+<td style="text-align: center;"><strong>1.000</strong></td>
+</tr>
+</tbody>
+</table>
+<h4>3. Analiza skrajnej rozbieżności</h4>
+<p>Największą rozbieżność zaobserwowano dla par <code>'kot'</code> vs <code>'kto'</code> oraz <code>'pies'</code> vs <code>'seip'</code>:
+- <strong>Jaccard dał 1.0 (100% zbieżności):</strong> Dla słów <code>'kot'</code> i <code>'kto'</code> zbiory znaków to $A = {k, o, t}$ i $B = {k, o, t}$. Ponieważ $|A \cap B| = |A \cup B|$, miara uznaje napisy za identyczne, będąc niewrażliwą na porządek liter.
+- <strong>Levenshtein dał odległość 2 (podobieństwo 0.33):</strong> Jako algorytm pozycyjny bez operacji transpozycji musi dokonać dwóch substytucji (<code>o</code> $\to$ <code>t</code> i <code>t</code> $\to$ <code>o</code>).
+- <strong>Damerau-Levenshtein dał odległość 1 (podobieństwo 0.67):</strong> Bezpośrednio obsłużył transpozycję sąsiadów jako jedną operację, poprawnie modelując typową literówkę.</p>
+<hr />
+<h3>Część G: Stop words i nazwy własne</h3>
+<h4>1. Usunięcie słów funkcyjnych</h4>
+<p>Z tekstu <em>Pana Tadeusza</em> usunięto słowa obecne w słowniku <code>stop-words</code> dla języka polskiego:
+- Liczba słów przed usunięciem: <strong>68 422</strong>
+- Liczba słów po usunięciu stop words: <strong>43 794</strong>
+- Odrzucono: <strong>24 628 słów (35.99% objętości tekstu)</strong></p>
+<h4>2. n-gramy po usunięciu stop words</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">Lp.</th>
+<th style="text-align: left;">Unigramy (bez stop words)</th>
+<th style="text-align: left;">Bigramy (bez stop words)</th>
+<th style="text-align: left;">Trigramy (bez stop words)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">1</td>
+<td style="text-align: left;"><code>rzekł</code> (155)</td>
+<td style="text-align: left;"><code>rzekł sędzia</code> (14)</td>
+<td style="text-align: left;"><code>pro publico bono</code> (5)</td>
+</tr>
+<tr>
+<td style="text-align: center;">2</td>
+<td style="text-align: left;"><code>hrabia</code> (129)</td>
+<td style="text-align: left;"><code>jaśnie wielmożny</code> (9)</td>
+<td style="text-align: left;"><code>wieku urzędu zaszczyt</code> (4)</td>
+</tr>
+<tr>
+<td style="text-align: center;">3</td>
+<td style="text-align: left;"><code>sędzia</code> (127)</td>
+<td style="text-align: left;"><code>jenerał dąbrowski</code> (8)</td>
+<td style="text-align: left;"><code>urzędu zaszczyt należy</code> (4)</td>
+</tr>
+<tr>
+<td style="text-align: center;">4</td>
+<td style="text-align: left;"><code>tadeusz</code> (108)</td>
+<td style="text-align: left;"><code>ksiądz robak</code> (8)</td>
+<td style="text-align: left;"><code>zaszczyt należy idąc</code> (4)</td>
+</tr>
+<tr>
+<td style="text-align: center;">5</td>
+<td style="text-align: left;"><code>wojski</code> (89)</td>
+<td style="text-align: left;"><code>rzekł hrabia</code> (8)</td>
+<td style="text-align: left;"><code>należy idąc kłaniał</code> (4)</td>
+</tr>
+<tr>
+<td style="text-align: center;">6</td>
+<td style="text-align: left;"><code>potem</code> (86)</td>
+<td style="text-align: left;"><code>drugiej strony</code> (6)</td>
+<td style="text-align: left;"><code>ostatniego horeszków chociaż</code> (4)</td>
+</tr>
+<tr>
+<td style="text-align: center;">7</td>
+<td style="text-align: left;"><code>oczy</code> (78)</td>
+<td style="text-align: left;"><code>hejże soplicę</code> (6)</td>
+<td style="text-align: left;"><code>horeszków chociaż kądzieli</code> (4)</td>
+</tr>
+<tr>
+<td style="text-align: center;">8</td>
+<td style="text-align: left;"><code>domu</code> (76)</td>
+<td style="text-align: left;"><code>kusego sokoła</code> (5)</td>
+<td style="text-align: left;"><code>goście weszli porządku</code> (3)</td>
+</tr>
+<tr>
+<td style="text-align: center;">9</td>
+<td style="text-align: left;"><code>szlachta</code> (64)</td>
+<td style="text-align: left;"><code>idąc kłaniał</code> (5)</td>
+<td style="text-align: left;"><code>weszli porządku stanęli</code> (3)</td>
+</tr>
+<tr>
+<td style="text-align: center;">10</td>
+<td style="text-align: left;"><code>cóż</code> (62)</td>
+<td style="text-align: left;"><code>kapitan ryków</code> (5)</td>
+<td style="text-align: left;"><code>porządku stanęli kołem</code> (3)</td>
+</tr>
+</tbody>
+</table>
+<p><img alt="Histogram n-gramów po usunięciu stop words" src="wykres_czesc_g.png" /></p>
+<h4>3. Wnioski: Treść a Styl</h4>
+<ul>
+<li><strong>Wariant ze stop words lepiej oddaje STYL tekstu:</strong> Zaimki, spójniki i partykuły wyznaczają budowę składniową, metrum wiersza (trzynastozgłoskowiec), archaizację oraz narrację gawędziarską.</li>
+<li><strong>Wariant bez stop words lepiej oddaje TREŚĆ tekstu:</strong> Odrzucenie słów funkcyjnych ujawnia kluczowe byty semantyczne: imiona bohaterów (<em>Tadeusz, Sędzia, Hrabia, Wojski, Ksiądz Robak</em>), zwroty tytularne (<em>jaśnie wielmożny</em>) oraz osie fabularne (<em>jenerał dąbrowski, hejże soplicę, kusego sokoła</em>).</li>
+</ul>
+<h4>4. Wyszukiwanie nazw własnych wyrażeniem regularnym</h4>
+<p>Do ekstrakcji nazw własnych zastosowano procedurę:
+1. Tekst podzielono na zdania (<code>sent_tokenize</code>), a z każdego zdania wykluczono wyraz pierwszy (pozycja indeksu 0), gdzie wielka litera wynika wyłącznie z reguł interpunkcyjnych.
+2. Zastosowano wyrażenie regularne dopasowujące słowa zaczynające się wielką literą: <code>r"[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+"</code>.
+3. Dodatkowo odfiltrowano spójniki wersowe (np. <em>Gdy, Lecz, Ale</em>), które w zapisie poetyckim rozpoczynają wers z wielkiej litery wewnątrz zdania.</p>
+<p>Najczęściej występujące nazwy własne:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">Pozycja</th>
+<th style="text-align: left;">Nazwa własna / Postać</th>
+<th style="text-align: center;">Liczba wystąpień</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">1</td>
+<td style="text-align: left;"><strong>Sędzia</strong></td>
+<td style="text-align: center;">98</td>
+</tr>
+<tr>
+<td style="text-align: center;">2</td>
+<td style="text-align: left;"><strong>Hrabia</strong></td>
+<td style="text-align: center;">92</td>
+</tr>
+<tr>
+<td style="text-align: center;">3</td>
+<td style="text-align: left;"><strong>Tadeusz</strong></td>
+<td style="text-align: center;">70</td>
+</tr>
+<tr>
+<td style="text-align: center;">4</td>
+<td style="text-align: left;"><strong>Wojski</strong></td>
+<td style="text-align: center;">69</td>
+</tr>
+<tr>
+<td style="text-align: center;">5</td>
+<td style="text-align: left;"><strong>Tadeusza</strong> (forma dopełniaczowa)</td>
+<td style="text-align: center;">54</td>
+</tr>
+<tr>
+<td style="text-align: center;">6</td>
+<td style="text-align: left;"><strong>Gerwazy</strong></td>
+<td style="text-align: center;">51</td>
+</tr>
+<tr>
+<td style="text-align: center;">7</td>
+<td style="text-align: left;"><strong>Robak</strong></td>
+<td style="text-align: center;">42</td>
+</tr>
+<tr>
+<td style="text-align: center;">8</td>
+<td style="text-align: left;"><strong>Podkomorzy</strong></td>
+<td style="text-align: center;">41</td>
+</tr>
+<tr>
+<td style="text-align: center;">9</td>
+<td style="text-align: left;"><strong>Klucznik</strong></td>
+<td style="text-align: center;">40</td>
+</tr>
+<tr>
+<td style="text-align: center;">10</td>
+<td style="text-align: left;"><strong>Sędziego</strong> / <strong>Telimena</strong></td>
+<td style="text-align: center;">38</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h3>Część H: Własny tokenizator podsłowowy (BPE)</h3>
+<h4>1. Uczenie tokenizatora BPE</h4>
+<p>Na tekście <em>Pana Tadeusza</em> wytrenowano 3 tokenizatory BPE o zadanych rozmiarach słownika: 1 000, 5 000 oraz 30 000 tokenów. Model o rozmiarze 5 000 tokenów zapisano do pliku <code>tokenizer_pl.json</code>.</p>
+<h4>2. Podział wybranych słów testowych</h4>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Badane słowo</th>
+<th style="text-align: left;">Słownik 1 000 (liczba tokenów)</th>
+<th style="text-align: left;">Słownik 5 000 (liczba tokenów)</th>
+<th style="text-align: left;">Słownik 30 000 (liczba tokenów)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><code>nieprzetłumaczalny</code></td>
+<td style="text-align: left;"><code>nie + prze + tłu + ma + cza + l + ny</code> (7)</td>
+<td style="text-align: left;"><code>nie + prze + tłuma + cza + lny</code> (5)</td>
+<td style="text-align: left;"><code>nie + prze + tłuma + cza + lny</code> (5)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>hiperparametryzacja</code></td>
+<td style="text-align: left;"><code>h + i + p + er + pa + ra + me + try + za + c + ja</code> (11)</td>
+<td style="text-align: left;"><code>h + i + per + para + me + try + za + cja</code> (8)</td>
+<td style="text-align: left;"><code>hi + per + para + metry + za + cja</code> (6)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>kotkowi</code></td>
+<td style="text-align: left;"><code>ko + t + ko + wi</code> (4)</td>
+<td style="text-align: left;"><code>kot + kowi</code> (2)</td>
+<td style="text-align: left;"><code>kot + kowi</code> (2)</td>
+</tr>
+<tr>
+<td style="text-align: left;"><code>sprawiedliwość</code></td>
+<td style="text-align: left;"><code>spra + wie + d + li + wo + ść</code> (6)</td>
+<td style="text-align: left;"><code>spra + wie + dli + wość</code> (4)</td>
+<td style="text-align: left;"><code>spra + wiedli + wość</code> (3)</td>
+</tr>
+</tbody>
+</table>
+<h4>3. Porównanie tokenizatorów na 5 zdaniach polskich i 5 angielskich</h4>
+<blockquote>
+<p><strong>Uwaga dotycząca dostępności i źródła tokenizatora Bielik:</strong>
+Oficjalne repozytorium <code>speakleash/Bielik-1.5B-v3</code> na platformie Hugging Face posiada status <em>gated</em> (dostęp przez API wymaga zalogowania z kluczem <code>HF_TOKEN</code> oraz uprzedniej akceptacji warunków licencji na stronie modelu).
+Aby zapewnić pełną powtarzalność badań bez konieczności konfiguracji zewnętrznych kluczy API, w projekcie zaimplementowano mechanizm fallback: skrypt w pierwszej kolejności próbuje załadować oficjalne repozytorium <code>speakleash/Bielik-1.5B-v3</code>, a w przypadku braku tokena korzysta z lokalnej kopii <code>bielik_tokenizer/</code> (utworzonej z tożsamego, otwartego mirrora <code>cpral/Bielik-1.5B-v3-ungated</code>). Oba warianty posiadają ten sam rozmiar słownika (32 000 tokenów) i tę samą architekturę.</p>
+</blockquote>
+<p>Zdania polskie:
+1. <em>"Litwo! Ojczyzno moja! ty jesteś jak zdrowie."</em>
+2. <em>"Ile cię trzeba cenić, ten tylko się dowie, kto cię stracił."</em>
+3. <em>"Tymczasem przenoś moją duszę utęsknioną do tych pagórków leśnych, do tych łąk zielonych."</em>
+4. <em>"Wpłynąłem na suchego przestwór oceanu, wóz nurza się w zieloność i jak łódka brodzi."</em>
+5. <em>"Ciemno wszędzie, głucho wszędzie, co to będzie, co to będzie?"</em></p>
+<p>Zdania angielskie:
+1. <em>"To be, or not to be, that is the question."</em>
+2. <em>"There are more things in heaven and earth, Horatio, than are dreamt of in your philosophy."</em>
+3. <em>"For this relief much thanks: it is bitter cold, and I am sick at heart."</em>
+4. <em>"If you do meet Horatio and Marcellus, the rivals of my watch, bid them make haste."</em>
+5. <em>"Something is rotten in the state of Denmark."</em></p>
+<p>Liczba wygenerowanych tokenów:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Język / Zdanie</th>
+<th style="text-align: center;">Custom BPE (5k)</th>
+<th style="text-align: center;">GPT-2</th>
+<th style="text-align: center;">HerBERT</th>
+<th style="text-align: center;">Bielik-1.5B-v3</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>PL zdanie 1</strong></td>
+<td style="text-align: center;">12</td>
+<td style="text-align: center;">24</td>
+<td style="text-align: center;">13</td>
+<td style="text-align: center;">12</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>PL zdanie 2</strong></td>
+<td style="text-align: center;">16</td>
+<td style="text-align: center;">33</td>
+<td style="text-align: center;">15</td>
+<td style="text-align: center;">15</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>PL zdanie 3</strong></td>
+<td style="text-align: center;">25</td>
+<td style="text-align: center;">55</td>
+<td style="text-align: center;">22</td>
+<td style="text-align: center;">21</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>PL zdanie 4</strong></td>
+<td style="text-align: center;">31</td>
+<td style="text-align: center;">49</td>
+<td style="text-align: center;">25</td>
+<td style="text-align: center;">26</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>PL zdanie 5</strong></td>
+<td style="text-align: center;">17</td>
+<td style="text-align: center;">39</td>
+<td style="text-align: center;">16</td>
+<td style="text-align: center;">16</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Średnia PL</strong></td>
+<td style="text-align: center;"><strong>20.20</strong></td>
+<td style="text-align: center;"><strong>40.00</strong></td>
+<td style="text-align: center;"><strong>18.20</strong></td>
+<td style="text-align: center;"><strong>18.00</strong></td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>EN zdanie 1</strong></td>
+<td style="text-align: center;">22</td>
+<td style="text-align: center;">13</td>
+<td style="text-align: center;">15</td>
+<td style="text-align: center;">15</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>EN zdanie 2</strong></td>
+<td style="text-align: center;">51</td>
+<td style="text-align: center;">21</td>
+<td style="text-align: center;">35</td>
+<td style="text-align: center;">31</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>EN zdanie 3</strong></td>
+<td style="text-align: center;">37</td>
+<td style="text-align: center;">18</td>
+<td style="text-align: center;">28</td>
+<td style="text-align: center;">25</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>EN zdanie 4</strong></td>
+<td style="text-align: center;">45</td>
+<td style="text-align: center;">22</td>
+<td style="text-align: center;">32</td>
+<td style="text-align: center;">30</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>EN zdanie 5</strong></td>
+<td style="text-align: center;">23</td>
+<td style="text-align: center;">9</td>
+<td style="text-align: center;">15</td>
+<td style="text-align: center;">13</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>Średnia EN</strong></td>
+<td style="text-align: center;"><strong>35.60</strong></td>
+<td style="text-align: center;"><strong>16.60</strong></td>
+<td style="text-align: center;"><strong>25.00</strong></td>
+<td style="text-align: center;"><strong>22.80</strong></td>
+</tr>
+</tbody>
+</table>
+<p><img alt="Porównanie średniej liczby tokenów na zdanie" src="wykres_czesc_h.png" /></p>
+<h4>4. Bezpośrednie badanie „podatku językowego” na parach równoległych</h4>
+<p>Aby precyzyjnie i empirycznie zbadać istnienie zjawiska podatku językowego (<em>language token penalty</em>), porównano liczbę tokenów dla <strong>par zdań będących swoimi bezpośrednimi tłumaczeniami (o identycznej treści semantycznej)</strong>:</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: center;">Nr</th>
+<th style="text-align: left;">Zdanie polskie (PL)</th>
+<th style="text-align: left;">Odpowiednik angielski (EN)</th>
+<th style="text-align: center;">GPT-2 (PL / EN)</th>
+<th style="text-align: center;">Bielik-1.5B-v3 (PL / EN)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: center;">1</td>
+<td style="text-align: left;"><em>Być albo nie być, oto jest pytanie.</em></td>
+<td style="text-align: left;"><em>To be, or not to be, that is the question.</em></td>
+<td style="text-align: center;">17 / 13 (1.31x)</td>
+<td style="text-align: center;">9 / 15 (0.60x)</td>
+</tr>
+<tr>
+<td style="text-align: center;">2</td>
+<td style="text-align: left;"><em>Więcej jest rzeczy na ziemi i w niebie, niż się ich śniło waszym filozofom.</em></td>
+<td style="text-align: left;"><em>There are more things in heaven and earth than are dreamt of in your philosophy.</em></td>
+<td style="text-align: center;">42 / 17 (2.47x)</td>
+<td style="text-align: center;">18 / 26 (0.69x)</td>
+</tr>
+<tr>
+<td style="text-align: center;">3</td>
+<td style="text-align: left;"><em>Za tę ulgę wielkie dzięki: jest przejmująco zimno, a ja jestem chory na sercu.</em></td>
+<td style="text-align: left;"><em>For this relief much thanks: it is bitter cold, and I am sick at heart.</em></td>
+<td style="text-align: center;">43 / 18 (2.39x)</td>
+<td style="text-align: center;">18 / 25 (0.72x)</td>
+</tr>
+<tr>
+<td style="text-align: center;">4</td>
+<td style="text-align: left;"><em>Coś jest zgniłego w państwie duńskim.</em></td>
+<td style="text-align: left;"><em>Something is rotten in the state of Denmark.</em></td>
+<td style="text-align: center;">24 / 9 (2.67x)</td>
+<td style="text-align: center;">10 / 13 (0.77x)</td>
+</tr>
+<tr>
+<td style="text-align: center;">5</td>
+<td style="text-align: left;"><em>Wszystkie narzędzia muszą być darmowe i otwarte.</em></td>
+<td style="text-align: left;"><em>All tools must be free and open source.</em></td>
+<td style="text-align: center;">25 / 9 (2.78x)</td>
+<td style="text-align: center;">8 / 15 (0.53x)</td>
+</tr>
+<tr>
+<td style="text-align: center;"><strong>Suma</strong></td>
+<td style="text-align: left;">—</td>
+<td style="text-align: left;">—</td>
+<td style="text-align: center;"><strong>151 / 66 (2.29x)</strong></td>
+<td style="text-align: center;"><strong>63 / 94 (0.67x)</strong></td>
+</tr>
+</tbody>
+</table>
+<p><strong>Wnioski z testu równoległego:</strong>
+- Dla anglocentrycznego tokenizatora <strong>GPT-2</strong> identyczna treść wyrażona w języku polskim wymaga łącznie aż 151 tokenów w stosunku do 66 tokenów po angielsku (<strong>współczynnik 2.29x</strong>, czyli o 129% więcej jednostek). Stanowi to bezpośredni dowód na istnienie podatku językowego.
+- Dla polskiego tokenizatora <strong>Bielik-1.5B-v3</strong> relacja ulega odwróceniu – polski tekst wymaga jedynie 63 tokenów (stosunek 0.67x względem angielskiego), co udowadnia, że dedykowana polszczyźnie tokenizacja podsłowowa całkowicie eliminuje tę karę.</p>
+<h4>5. Wnioski i odpowiedzi na pytania teoretyczne</h4>
+<ol>
+<li><strong>Ekonomiczność tokenizatorów:</strong></li>
+<li>Dla języka polskiego najbardziej ekonomiczny jest <strong>Bielik-1.5B-v3</strong> (średnio 18.00 tokenów/zdanie) oraz <strong>HerBERT</strong> (18.20 tokenów). Nasz model <strong>Custom BPE 5k</strong> osiąga bardzo zbliżony wynik (20.20 tokenów). GPT-2 wypada ponad dwukrotnie gorzej (aż 40.00 tokenów na losowych zdaniach oraz 2.29x więcej na tłumaczeniach).</li>
+<li>Dla języka angielskiego najbardziej ekonomiczny jest <strong>GPT-2</strong> (16.60 tokenów). Własny tokenizator wytrenowany wyłącznie na polskim korpusie radzi sobie najsłabiej (35.60 tokenów).</li>
+<li><strong>Nieliniowość wzrostu słownika:</strong>
+   Wraz ze wzrostem rozmiaru słownika ($1\,000 \to 5\,000 \to 30\,000$) liczba tokenów na słowo maleje, jednak zależność ta ma charakter <strong>sublinearny (malejących przychodów)</strong>. Przejście z 1k do 5k daje wyraźną redukcję podziałów (np. <em>kotkowi</em> z 4 do 2 tokenów), natomiast przejście z 5k do 30k przynosi znikomy zysk, gdyż rzadkie słowa i formy fleksyjne nie występują dostatecznie często, by uzasadnić ich obecność w słowniku.</li>
+<li><strong>Zjawisko przeuczenia domeny (domain overfitting):</strong>
+   Tokenizator uczy się najczęstszych zrostów znakowych korpusu treningowego. Wytrenowany na <em>Panu Tadeuszu</em> zapamiętuje morfy charakterystyczne dla języka XIX-wiecznego i poezji. W konfrontacji z językiem współczesnym lub technicznym nie posiada odpowiednich prefiksów i tnie słowa na drobne fragmenty lub pojedyncze litery.</li>
+<li><strong>Związek z pojęciem „podatku językowego” (<em>language token penalty</em>):</strong>
+   Modele oparte na tokenizatorach anglocentrycznych (jak GPT-2) nie mają w słowniku polskich morfemów i znaków diakrytycznych. W efekcie użytkownik ponosi bezpośrednie konsekwencje:</li>
+<li>Finansowe: 2-3 krotnie wyższy koszt zapytań API za przetworzenie tej samej treści semantycznej.</li>
+<li>Pojemnościowe: Okno kontekstowe modelu (<em>context window</em>) wyczerpuje się ponad dwukrotnie szybciej w języku polskim.</li>
+<li>Wydajnościowe: Czas generowania odpowiedzi i zużycie pamięci operacyjnej rosną proporcjonalnie do liczby tokenów.</li>
+</ol>
+<hr />
+<h3>Część I: Porównanie wszystkich metod na tym samym fragmencie</h3>
+<p>Do analizy porównawczej wykorzystano fragment Inwokacji <em>Pana Tadeusza</em> (1850 znaków).</p>
+<table>
+<thead>
+<tr>
+<th style="text-align: left;">Wariant przetwarzania</th>
+<th style="text-align: center;">Liczba jednostek w tekście</th>
+<th style="text-align: center;">Rozmiar słownika (unikalne)</th>
+<th style="text-align: left;">Przykładowy początek</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td style="text-align: left;"><strong>1. Same wyrazy (surowe słowa)</strong></td>
+<td style="text-align: center;">279</td>
+<td style="text-align: center;">223</td>
+<td style="text-align: left;"><code>litwo</code>, <code>ojczyzno</code>, <code>moja</code>, <code>ty</code>...</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>2. Wyrazy po lematyzacji (spaCy)</strong></td>
+<td style="text-align: center;">279</td>
+<td style="text-align: center;">207</td>
+<td style="text-align: left;"><code>litwo</code>, <code>ojczyzno</code>, <code>mój</code>, <code>ty</code>...</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>3. Wyrazy bez stop words</strong></td>
+<td style="text-align: center;">178</td>
+<td style="text-align: center;">173</td>
+<td style="text-align: left;"><code>litwo</code>, <code>ojczyzno</code>, <code>jesteś</code>, <code>zdrowie</code>...</td>
+</tr>
+<tr>
+<td style="text-align: left;"><strong>4. Tokeny podsłowowe (BPE 5k)</strong></td>
+<td style="text-align: center;">453</td>
+<td style="text-align: center;">311</td>
+<td style="text-align: left;"><code>li</code>, <code>two</code>, <code>ojczy</code>, <code>zno</code>...</td>
+</tr>
+</tbody>
+</table>
+<h4>Wnioski:</h4>
+<ol>
+<li><strong>Najsilniejsza redukcja słownika w obrębie tekstu:</strong>
+   Wariant 3 (usunięcie stop words) najmocniej zmniejsza liczbę unikalnych jednostek (z 223 do 173, spadek o 22.4%), a długość tekstu spada o 36.2% (z 279 do 178 słów).</li>
+<li><strong>Koszt:</strong> Całkowita utrata struktury gramatycznej, relacji syntaktycznych i sensu ciągłego wypowiedzi. Odrzucenie spójników uniemożliwia generowanie spójnego tekstu przez LLM.</li>
+<li><strong>Koszt lematyzacji (Wariant 2):</strong>
+   Zmniejsza unikalny słownik o 7.2% przy zachowaniu pełnej długości tekstu (279 jednostek) i relacji między słowami. Ceną jest utrata informacji o czasie, osobie i przypadku oraz konieczność użycia ciężkich modeli morfologicznych.</li>
+<li><strong>Rola BPE (Wariant 4):</strong>
+   W obrębie krótkiego fragmentu liczba jednostek wzrasta (z 279 do 453 tokenów), ponieważ rzadsze słowa są dzielone na morfy. Globalnie jednak BPE jest jedyną metodą gwarantującą stały, zamknięty rozmiar słownika dla całego modelu przy zerowej liczbie słów nieznanych (brak OOV), co czyni ją standardem we współczesnym NLP.</li>
+</ol>
+</body>
+</html>

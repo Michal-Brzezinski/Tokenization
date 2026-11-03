@@ -1,52 +1,133 @@
+import re
 import nltk
-
-# nltk.download("punkt")
-# nltk.download("wordnet")
-# nltk.download("omw-1.4")
-
 from nltk.tokenize import sent_tokenize, word_tokenize
 from nltk.stem import SnowballStemmer, WordNetLemmatizer
 
 # --------------------------------------------------
-# Wczytanie tekstu
+# Wczytanie tekstu dramatu Hamlet
 # --------------------------------------------------
 
 with open("texts/hamlet-william-shakespeare.txt", "r", encoding="utf-8") as f:
     text = f.read()
 
 # --------------------------------------------------
-# Pierwsze 5 zdań
+# Wybór 5 zdań z właściwego tekstu dramatu
+# (pomijamy metadane, notatki edytorskie i licencję Project Gutenberg)
 # --------------------------------------------------
 
-sentences = sent_tokenize(text)[:5]
+# Odszukanie początku dialogu w Akcie I
+dialogue_start = text.find("Nay, answer me")
+if dialogue_start == -1:
+    dialogue_start = text.find("ACT I")
+
+dialogue_text = text[dialogue_start:]
+raw_sentences = sent_tokenize(dialogue_text)
+
+sentences = []
+for s in raw_sentences:
+    # Oczyszczenie z didaskaliów w nawiasach i oznaczeń postaci
+    cleaned = re.sub(r"_[A-Za-z\.]+_|\[.*?\]|\([A-Z\.]+\)", "", s)
+    cleaned = " ".join(cleaned.split())
+    # Filtrujemy nagłówki scen i puste linie
+    if len(cleaned) > 25 and not cleaned.isupper() and not cleaned.startswith("Enter"):
+        sentences.append(cleaned)
+    if len(sentences) == 5:
+        break
+
+print("=" * 60)
+print("WYBRANE ZDANIA Z HAMLETA (AKT I, SCENA 1):")
+print("=" * 60)
+for i, s in enumerate(sentences, start=1):
+    print(f"{i}. {s}")
+
+# --------------------------------------------------
+# Inicjalizacja algorytmów
+# Stemming: SnowballStemmer (ulepszony algorytm Portera)
+# Lematyzacja: WordNetLemmatizer (oparty na bazie leksykalnej WordNet)
+# --------------------------------------------------
 
 stemmer = SnowballStemmer("english")
 lemmatizer = WordNetLemmatizer()
 
-print("WYBRANE ZDANIA:\n")
-
-for i, s in enumerate(sentences, start=1):
-    print(f"{i}. {s}")
+different_results = []
 
 for number, sentence in enumerate(sentences, start=1):
-
     tokens = word_tokenize(sentence)
 
-    print(f"\n\nZDANIE NUMER {number}:")
+    print(f"\n\nZDANIE NUMER {number}: \"{sentence}\"")
 
-    h1, h2, h3 = "TOKEN", "RDZEŃ", "LEMAT"
-    print("=" * 53)
-    print(f"|{h1:^15} | {h2:^15} | {h3:^15}|")
-    print("=" * 53)
+    h1, h2, h3 = "TOKEN", "RDZEŃ (STEM)", "LEMAT (LEMMA)"
+    print("=" * 55)
+    print(f"|{h1:^17} | {h2:^17} | {h3:^17}|")
+    print("=" * 55)
 
     for token in tokens:
-
-        # pomijanie znaków interpunkcyjnych
+        # Pomijanie znaków interpunkcyjnych
         if not token.isalpha():
             continue
 
-        stem = stemmer.stem(token.lower())
-        lemma = lemmatizer.lemmatize(token.lower())
+        token_lower = token.lower()
+        stem = stemmer.stem(token_lower)
+        lemma = lemmatizer.lemmatize(token_lower)
 
-        print(f"|{token:^15} | {stem:^15} | {lemma:^15}|")
-        print("-" * 53)
+        print(f"|{token:^17} | {stem:^17} | {lemma:^17}|")
+        print("-" * 55)
+
+        if stem != lemma:
+            different_results.append((token, stem, lemma))
+
+# --------------------------------------------------
+# Zestawienie słów o różnych wynikach (Punkt 4)
+# --------------------------------------------------
+
+print("\n" + "=" * 65)
+print("SŁOWA, DLA KTÓRYCH STEMMING I LEMATYZACJA DAŁY RÓŻNE WYNIKI:")
+print("=" * 65)
+
+# Usunięcie ewentualnych duplikatów z zachowaniem kolejności
+unique_diffs = []
+seen = set()
+for item in different_results:
+    if item[0].lower() not in seen:
+        seen.add(item[0].lower())
+        unique_diffs.append(item)
+
+h1, h2, h3 = "SŁOWO (TOKEN)", "RDZEŃ (STEM)", "LEMAT (LEMMA)"
+print(f"|{h1:^19} | {h2:^19} | {h3:^19}|")
+print("-" * 65)
+for token, stem, lemma in unique_diffs:
+    print(f"|{token:^19} | {stem:^19} | {lemma:^19}|")
+print("=" * 65)
+
+# ==============================================================================
+# ODPOWIEDŹ I WYJAŚNIENIE DO PUNKTU 4
+# ==============================================================================
+"""
+Wyjaśnienie różnic dla wybranych słów:
+
+1. 'carefully' -> rdzeń: 'care', lemat: 'carefully'
+   - Stemmer Snowball odcina regułowo przyrostki przysłówkowe ('-fully' / '-ly'),
+     redukując wyraz do podstawy rzeczownikowo-czasownikowej 'care'.
+   - Lematyzator WordNet zachowuje formę 'carefully', ponieważ przysłówek
+     stanowi osobną, pełnoprawną jednostkę leksykalną (hasło słownikowe).
+
+2. 'thanks' -> rdzeń: 'thank', lemat: 'thanks'
+   - Stemmer odcina końcówkę fleksyjną '-s', traktując wyraz jako formę czasownika
+     'to thank' w 3. os. l. poj. lub liczbę mnogą rzeczownika.
+   - Lematyzator WordNet traktuje 'thanks' jako samodzielny rzeczownik (plurale tantum)
+     oznaczający podziękowania / dzięki, dlatego lemat pozostaje w formie 'thanks'.
+
+3. 'haste' -> rdzeń: 'hast', lemat: 'haste'
+   - Stemmer stosuje regułę usuwania końcowego niemego '-e' w celu normalizacji
+     form takich jak 'hasting' czy 'hasty', co skutkuje powstaniem nieistniejącego
+     w języku angielskim rdzenia 'hast'.
+   - Lematyzator weryfikuje słowo w słowniku WordNet i zachowuje poprawną formę
+     hasłową (mianownik) 'haste'.
+
+Podsumowanie teoretyczne:
+- Stemming działa algorytmicznie (metodą heurystycznego obcinania prefiksów i sufiksów)
+  bez znajomości słownika i kontekstu gramatycznego. Może prowadzić do nadmiernego
+  obcinania (overstemming) i tworzenia wyrazów niegramatycznych.
+- Lematyzacja korzysta z pełnej bazy morfologiczno-słownikowej (WordNet) i zawsze
+  zwraca poprawny wyraz hasłowy (lemat), respektując reguły języka.
+"""
