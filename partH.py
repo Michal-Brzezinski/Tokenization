@@ -240,3 +240,106 @@ for i, (pl, en) in enumerate(parallel_pairs, 1):
 print("=" * 88)
 print(f"ŁĄCZNIE DLA GPT-2:  PL={tot_pl_gpt} tokenów | EN={tot_en_gpt} tokenów -> Stosunek: {tot_pl_gpt/tot_en_gpt:.2f}x (podatek językowy: +129%)")
 print(f"ŁĄCZNIE DLA BIELIK: PL={tot_pl_biel} tokenów | EN={tot_en_biel} tokenów -> Stosunek: {tot_pl_biel/tot_en_biel:.2f}x (brak kary)")
+
+# --------------------------------------------------
+# 6. Eksperyment: rozmiar słownika vs liczba tokenów (pytanie o liniowość)
+#    oraz tekst „własny” vs „obcy” (pytanie o jedną książkę)
+# --------------------------------------------------
+
+import re as _re
+
+def load_words(path):
+    with open(path, "r", encoding="utf-8") as f:
+        t = f.read().split("\n-----\n")[0]          # bez stopki Wolnych Lektur
+    return " ".join(_re.findall(r"\w+", t))          # same wyrazy, bez interpunkcji
+
+in_domain = load_words("texts/pan-tadeusz-adam-mickiewicz.txt")      # tekst treningowy
+out_domain = load_words("texts/rozmyslania-marek-aureliusz.txt")     # inny tekst polski
+n_words_in = len(in_domain.split())
+n_words_out = len(out_domain.split())
+
+sweep_sizes = [500, 1000, 2000, 5000, 10000, 20000, 30000]
+sweep = []
+print("\n" + "=" * 85)
+print("ROZMIAR SŁOWNIKA A LICZBA TOKENÓW (tokeny na wyraz = 'fertility'):")
+print("=" * 85)
+print(f"| {'słownik':>8} | {'rzecz.':>6} | {'tok/wyraz Pan Tadeusz':>21} | {'tok/wyraz Rozmyślania':>21} | {'tok. 5 zdań PL':>14} |")
+for vs in sweep_sizes:
+    if vs in tokenizers:
+        tok = tokenizers[vs]
+    else:
+        tok = Tokenizer(BPE(unk_token="[UNK]"))
+        tok.pre_tokenizer = Whitespace()
+        tok.train(["texts/pan-tadeusz-adam-mickiewicz.txt"],
+                  BpeTrainer(special_tokens=["[UNK]", "[PAD]", "[CLS]", "[SEP]", "[MASK]"],
+                             vocab_size=vs, show_progress=False))
+    f_in = len(tok.encode(in_domain).ids) / n_words_in
+    f_out = len(tok.encode(out_domain).ids) / n_words_out
+    pl5 = sum(len(tok.encode(s).ids) for s in pl_sentences)
+    sweep.append((vs, tok.get_vocab_size(), f_in, f_out, pl5))
+    print(f"| {vs:>8} | {tok.get_vocab_size():>6} | {f_in:>21.3f} | {f_out:>21.3f} | {pl5:>14} |")
+
+# Gotowe tokenizatory na tych samych tekstach (punkt odniesienia)
+print("\nPunkt odniesienia – gotowe tokenizatory (tokeny na wyraz):")
+ref = {}
+for name, t in [("GPT-2", tok_gpt2), ("HerBERT", tok_herbert), ("Bielik-1.5B-v3", tok_bielik)]:
+    fi = len(t.backend_tokenizer.encode(in_domain, add_special_tokens=False).ids) / n_words_in
+    fo = len(t.backend_tokenizer.encode(out_domain, add_special_tokens=False).ids) / n_words_out
+    ref[name] = (fi, fo)
+    print(f"  {name:<15} Pan Tadeusz: {fi:.3f} | Rozmyślania: {fo:.3f} | różnica: {(fo / fi - 1) * 100:+.1f}%")
+c5 = [s for s in sweep if s[0] == 5000][0]
+print(f"  {'Custom BPE 5k':<15} Pan Tadeusz: {c5[2]:.3f} | Rozmyślania: {c5[3]:.3f} | różnica: {(c5[3] / c5[2] - 1) * 100:+.1f}%")
+
+fig, ax = plt.subplots(figsize=(9, 5.5))
+ax.plot([s[1] for s in sweep], [s[2] for s in sweep], "o-", color="crimson",
+        label="Własny BPE – Pan Tadeusz (tekst treningowy)")
+ax.plot([s[1] for s in sweep], [s[3] for s in sweep], "s-", color="royalblue",
+        label="Własny BPE – Rozmyślania (tekst obcy)")
+for name, color in [("HerBERT", "gray"), ("Bielik-1.5B-v3", "darkgreen")]:
+    ax.axhline(ref[name][1], color=color, linestyle="--", linewidth=1,
+               label=f"{name} – Rozmyślania")
+ax.set_xscale("log")
+ax.set_xlabel("Rzeczywisty rozmiar słownika (skala log)")
+ax.set_ylabel("Średnia liczba tokenów na wyraz")
+ax.set_title("Wpływ rozmiaru słownika BPE na długość tokenizacji")
+ax.grid(True, which="both", linestyle="--", alpha=0.4)
+ax.legend(fontsize=9)
+plt.tight_layout()
+plt.savefig("wykres_czesc_h_slownik.png", dpi=200)
+plt.close()
+print("\n[OK] Zapisano wykres 'wykres_czesc_h_slownik.png'.")
+
+# ==============================================================================
+# ODPOWIEDZI NA PYTANIA Z CZĘŚCI H
+# ==============================================================================
+"""
+1. Najbardziej ekonomiczny tokenizator:
+   - PL: Bielik-1.5B-v3 (18,0 tok./zdanie), tuż za nim HerBERT (18,2); własny BPE 5k – 20,2;
+     GPT-2 – 40,0 (ponad 2x więcej).
+   - EN: GPT-2 (16,6 tok./zdanie); Bielik 22,8; HerBERT 25,0; własny BPE 35,6.
+
+2. Rozmiar słownika a liczba tokenów – zależność NIE jest liniowa:
+   500 -> 1000 (+500 tokenów słownika): 2,54 -> 2,18 tok./wyraz (-0,37),
+   20 000 -> 30 000 (+10 000 tokenów): 1,14 -> 1,00 tok./wyraz (-0,14).
+   Liczba tokenów maleje mniej więcej logarytmicznie z rozmiarem słownika: każde kolejne
+   scalenie BPE dotyczy rzadszej pary, więc daje coraz mniejszy zysk. Przy 30k słownik
+   (29 518) przekracza liczbę różnych wyrazów w książce, więc na „Panu Tadeuszu” każdy wyraz
+   to 1 token – słownik po prostu zapamiętał tekst.
+
+3. Dlaczego tokenizator z jednej książki działa gorzej na innym tekście:
+   BPE scala pary najczęstsze W KORPUSIE TRENINGOWYM, więc słownik odzwierciedla jego
+   słownictwo (imiona, archaizmy, rymy). Na „Rozmyślaniach” (inny tekst polski) własny BPE 5k
+   potrzebuje o 8,2% więcej tokenów na wyraz niż na „Panu Tadeuszu”, a wariant 30k aż o 39%
+   (1,00 -> 1,39). Gotowe tokenizatory (HerBERT, Bielik), uczone na ogromnych, zróżnicowanych
+   korpusach, radzą sobie z „Rozmyślaniami” nawet LEPIEJ niż z poematem (-15%). To typowe
+   przeuczenie: im większy słownik z małego korpusu, tym więcej w nim całych wyrazów z tej
+   jednej książki, a mniej uniwersalnych morfemów.
+
+4. Związek z „podatkiem językowym”:
+   Podatek językowy to dodatkowe tokeny, które płaci język słabo reprezentowany w danych
+   treningowych tokenizatora. GPT-2 (słownik uczony na angielskim) potrzebuje 2,29x więcej
+   tokenów na tę samą treść po polsku niż po angielsku; własny BPE uczony na polskim
+   ma odwrotny problem z angielskim. Większa liczba tokenów to wyższy koszt API,
+   krótszy efektywny kontekst i wolniejsza generacja. Bielik (słownik projektowany dla
+   polszczyzny) tego podatku nie nakłada.
+"""

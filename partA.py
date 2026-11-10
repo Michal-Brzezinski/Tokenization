@@ -15,6 +15,10 @@ with open("texts/pan-tadeusz-adam-mickiewicz.txt", "r", encoding="utf-8") as f:
 # with open("texts/rozmyslania-marek-aureliusz.txt", "r", encoding="utf-8") as f:
     raw_text = f.read()
 
+# Odcięcie stopki licencyjnej Wolnych Lektur (zaczyna się od linii "-----"),
+# żeby metadane nie zaburzały statystyk n-gramów
+raw_text = raw_text.split("\n-----\n")[0]
+
 # --------------------------------------------------
 # Tokenizacja na zdania (wykonana na surowym tekście,
 # aby zachować znaki interpunkcyjne kończące zdania: ., !, ?)
@@ -109,6 +113,35 @@ plt.tight_layout()
 plt.savefig("wykres_czesc_a.png", dpi=300)
 plt.close()
 
+# --------------------------------------------------
+# Porównanie rozkładów unigramów, bigramów i trigramów (do pytania 3)
+# --------------------------------------------------
+
+print("\nSTATYSTYKI ROZKŁADÓW N-GRAMÓW:")
+print(f"| {'n-gram':<9} | {'wystąpienia':>11} | {'unikalne':>9} | {'hapax (1x)':>10} | {'% hapax':>7} | {'top-10 / całość':>15} |")
+for name, freq, total in [("unigramy", unigram_freq, len(unigrams)),
+                          ("bigramy", bigram_freq, len(bigrams)),
+                          ("trigramy", trigram_freq, len(trigrams))]:
+    hapax = sum(1 for c in freq.values() if c == 1)
+    top10 = sum(c for _, c in freq.most_common(10))
+    print(f"| {name:<9} | {total:>11} | {len(freq):>9} | {hapax:>10} | {hapax / len(freq) * 100:>6.1f}% | {top10 / total * 100:>14.2f}% |")
+
+# Wykres rangowo-częstościowy (prawo Zipfa) w skali log-log
+fig, ax = plt.subplots(figsize=(8, 5))
+for name, freq, color in [("unigramy", unigram_freq, "steelblue"),
+                          ("bigramy", bigram_freq, "coral"),
+                          ("trigramy", trigram_freq, "seagreen")]:
+    counts = sorted(freq.values(), reverse=True)
+    ax.loglog(range(1, len(counts) + 1), counts, label=name, color=color, linewidth=1.8)
+ax.set_xlabel("Ranga n-gramu (skala log)")
+ax.set_ylabel("Liczba wystąpień (skala log)")
+ax.set_title("Rozkład rangowo-częstościowy n-gramów (Pan Tadeusz)")
+ax.grid(True, which="both", linestyle="--", alpha=0.4)
+ax.legend()
+plt.tight_layout()
+plt.savefig("wykres_czesc_a_zipf.png", dpi=200)
+plt.close()
+
 # ==============================================================================
 # ODPOWIEDZI NA PYTANIA (PUNKT 7)
 # ==============================================================================
@@ -135,12 +168,16 @@ plt.close()
 
 3. Jak różni się rozkład unigramów od rozkładu bigramów?
    Odpowiedź:
-   - Częstość bezwzględna: Najczęstszy unigram („i”) występuje aż 2134 razy,
+   - Częstość bezwzględna: Najczęstszy unigram („i”) występuje aż 2128 razy,
      podczas gdy najczęstszy bigram („się w”) jedynie 76 razy. Oznacza to gwałtowny
      spadek maksymalnej częstości (o niemal 96%).
    - Kształt rozkładu: Rozkład unigramów jest silnie skośny i wykazuje cechy klasycznego
-     prawa Zipfa (kilka słów dominuje i kumuluje ogromny odsetek wszystkich wystąpień).
-     Rozkład bigramów jest znacznie bardziej spłaszczony i rozproszony (ang. long tail) –
-     przestrzeń potencjalnych par wyrazów rośnie kwadratowo (V^2), w związku z czym
-     ogromna większość bigramów pojawia się w tekście zaledwie 1-2 razy (hapax legomena).
+     prawa Zipfa – 10 najczęstszych słów pokrywa 16,4% całego tekstu.
+     Rozkład bigramów jest znacznie bardziej spłaszczony i rozproszony (ang. long tail):
+     10 najczęstszych bigramów to tylko 0,76% wszystkich wystąpień, a 92,7% unikalnych
+     bigramów pojawia się dokładnie raz (dla unigramów: 63,1%, dla trigramów: 99,1%).
+     Przestrzeń potencjalnych par wyrazów rośnie kwadratowo (V^2), więc przy stałej
+     długości tekstu prawie każda para jest „nowa”. Na wykresie log-log
+     (wykres_czesc_a_zipf.png) krzywe bigramów i trigramów leżą dużo niżej i szybciej
+     przechodzą w długie „plateau” n-gramów występujących jeden raz.
 """

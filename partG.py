@@ -20,6 +20,9 @@ print("=" * 70)
 with open("texts/pan-tadeusz-adam-mickiewicz.txt", "r", encoding="utf-8") as f:
     raw_text = f.read()
 
+# Odcięcie stopki licencyjnej Wolnych Lektur (tak samo jak w części A)
+raw_text = raw_text.split("\n-----\n")[0]
+
 # --------------------------------------------------
 # 1. Usunięcie stop words z tekstu polskiego
 # --------------------------------------------------
@@ -99,6 +102,24 @@ plt.close()
 print("\n[OK] Zapisano wykres n-gramów bez stop words do pliku 'wykres_czesc_g.png'.")
 
 # --------------------------------------------------
+# Ilościowe porównanie obu wariantów (Punkt 3)
+# --------------------------------------------------
+
+def ngram_stats(words, n):
+    freq = Counter(ngrams(words, n))
+    total = max(len(words) - n + 1, 1)
+    top10 = sum(c for _, c in freq.most_common(10))
+    repeated = sum(1 for c in freq.values() if c > 1)
+    return len(freq), top10 / total * 100, repeated
+
+print("\nPORÓWNANIE WARIANTÓW (ze stop words vs bez stop words):")
+print(f"| {'n':<2} | {'unikalne ze SW':>14} | {'unikalne bez SW':>15} | {'top-10 ze SW':>12} | {'top-10 bez SW':>13} | {'powt. ze SW':>11} | {'powt. bez SW':>12} |")
+for n in (1, 2, 3):
+    u1, t1, r1 = ngram_stats(words_all, n)
+    u2, t2, r2 = ngram_stats(words_filtered, n)
+    print(f"| {n:<2} | {u1:>14} | {u2:>15} | {t1:>11.2f}% | {t2:>12.2f}% | {r1:>11} | {r2:>12} |")
+
+# --------------------------------------------------
 # 3. Odnalezienie nazw własnych wyrażeniem regularnym (Punkty 4 i 5)
 # --------------------------------------------------
 
@@ -106,34 +127,73 @@ print("\n" + "=" * 70)
 print("WYKRYWANIE NAZW WŁASNYCH WYRAŻENIEM REGULARNYM")
 print("=" * 70)
 
-# Krok 1: Podział na zdania, aby wyeliminować pierwsze słowo każdego zdania
-sentences = sent_tokenize(raw_text)
-proper_names = []
+# Pan Tadeusz jest pisany wierszem – KAŻDY wers zaczyna się wielką literą, także
+# w środku zdania. Samo pominięcie pierwszego słowa zdania nie wystarcza (do nazw
+# trafiłyby np. „Potem”, „Tymczasem”, „Wtem”, „Rzekł” z początków wersów).
+#
+# Wyrażenie regularne:
+#   (?<=[a-ząćęłńóśźż,;)] )      – lookbehind: tuż przed słowem jest JEDNA spacja,
+#                                  a przed nią mała litera, przecinek, średnik lub „)”.
+#                                  Wyklucza to: początek wersu (przed słowem jest \n
+#                                  lub wcięcie), początek zdania (przed spacją jest
+#                                  . ! ? …) oraz początek wypowiedzi (po „—” lub „:”).
+#   [A-ZĄĆĘŁŃÓŚŹŻ]               – pierwsza litera wielka (z polskimi diakrytykami),
+#   [a-ząćęłńóśźż]+               – reszta wyrazu małymi literami (odrzuca skróty
+#                                  pisane wersalikami, np. „ISBN”).
+NAME_RE = re.compile(r"(?<=[a-ząćęłńóśźż,;)] )[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+")
 
-# Wyrażenie regularne dopasowujące słowa polskie (z polskimi znakami diakrytycznymi)
-word_pattern = re.compile(r"[A-ZĄĆĘŁŃÓŚŹŻa-ząćęłńóśźż]+")
-
-for s in sentences:
-    words_in_sentence = word_pattern.findall(s)
-    if len(words_in_sentence) > 1:
-        # Sprawdzamy słowa od drugiego (indeks 1 wzwyż) - wewnątrz zdania
-        for word in words_in_sentence[1:]:
-            # Słowo zaczyna się wielką literą, a reszta to małe litery
-            if word[0].isupper() and word[1:].islower():
-                # Odrzucamy słowa funkcyjne z początku wersów (np. Lecz, Gdy, Ale, Na),
-                # które znalazły się wewnątrz zdania z powodu zapisu wierszem
-                if word.lower() not in polish_stop_words:
-                    proper_names.append(word)
-
+proper_names = NAME_RE.findall(raw_text)
 names_counter = Counter(proper_names)
 top_10_names = names_counter.most_common(10)
 
-h1, h2 = "NAZWA WŁASNA / POSTAĆ", "LICZBA WYSTĄPIEŃ"
+print(f"Dopasowań: {len(proper_names)}, unikalnych form: {len(names_counter)}\n")
+h1, h2 = "NAZWA WŁASNA (forma)", "LICZBA WYSTĄPIEŃ"
 print(f"|{h1:^25} | {h2:^18}|")
 print("=" * 47)
 for name, cnt in top_10_names:
     print(f"|{name:^25} | {cnt:^18}|")
     print("-" * 47)
+
+# Porównanie z metodą naiwną: „pierwsze słowo zdania odpada, reszta z wielkiej litery”
+naive = []
+for s in sent_tokenize(raw_text):
+    for w in re.findall(r"[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+", s)[1:]:
+        if w.lower() not in polish_stop_words:
+            naive.append(w)
+naive_counter = Counter(naive)
+false_pos = [w for w in naive_counter if w not in names_counter]
+print(f"\nMetoda naiwna (tylko pominięcie 1. słowa zdania): {len(naive)} dopasowań, "
+      f"{len(naive_counter)} unikalnych form.")
+print("Przykładowe formy znalezione WYŁĄCZNIE metodą naiwną (początki wersów):")
+print("  " + ", ".join(sorted(false_pos, key=lambda w: -naive_counter[w])[:15]))
+
+# --------------------------------------------------
+# Grupowanie form fleksyjnych (Tadeusz / Tadeusza / Tadeuszowi ...) lematem Morfeusza2
+# --------------------------------------------------
+try:
+    import morfeusz2
+    morf = morfeusz2.Morfeusz()
+
+    def name_lemma(form):
+        interps = [r[2] for r in morf.analyse(form)]
+        # preferujemy interpretację, której lemat zaczyna się wielką literą (nazwa własna)
+        for i in interps:
+            lemma = i[1].split(":")[0]
+            if lemma[:1].isupper():
+                return lemma
+        return interps[0][1].split(":")[0].capitalize()
+
+    lemma_counter = Counter()
+    for form, cnt in names_counter.items():
+        lemma_counter[name_lemma(form)] += cnt
+
+    print("\n10 NAJCZĘSTSZYCH NAZW WŁASNYCH PO ZGRUPOWANIU FORM (lemat Morfeusz2):")
+    for lemma, cnt in lemma_counter.most_common(10):
+        forms = sorted((f for f in names_counter if name_lemma(f) == lemma),
+                       key=lambda f: -names_counter[f])
+        print(f"  {lemma:<12} {cnt:>4}   ← {', '.join(f'{f} ({names_counter[f]})' for f in forms[:4])}")
+except ImportError:
+    print("\n(morfeusz2 niedostępny – pomijam grupowanie form)")
 
 # ==============================================================================
 # ODPOWIEDZI NA PYTANIA I WNIOSKI (PUNKTY 3, 4 I 5)
@@ -142,29 +202,24 @@ for name, cnt in top_10_names:
 WNIOSKI I ODPOWIEDZI NA PYTANIA:
 
 1. Porównanie wariantów (ze stop words vs bez stop words):
-   - Różnice są olbrzymie i fundamentalne. W części A najczęstszymi bigramami były
-     wyłącznie słowa funkcyjne ('się w', 'i z', 'się z', 'się i').
-   - Po usunięciu stop words w n-gramach pojawiają się kluczowe terminy fabularne:
+   - Różnice są bardzo istotne. Lista stop-words usuwa ok. 36% wszystkich wyrazów.
+     W części A najczęstsze bigramy to wyłącznie słowa funkcyjne ('się w', 'i z', 'się z').
+   - Po usunięciu stop words w n-gramach pojawiają się terminy fabularne:
      * Bohaterowie: 'rzekł sędzia', 'ksiądz robak', 'rzekł hrabia', 'kapitan ryków',
        'jenerał dąbrowski'.
-     * Związki frazeologiczne i tytuły: 'jaśnie wielmożny', 'pro publico bono'.
+     * Tytuły i zwroty: 'jaśnie wielmożny', 'pro publico bono'.
      * Motywy fabularne: 'kusego sokoła' (spór o charty), 'hejże soplicę' (zajazd).
-   - Który wariant lepiej pokazuje TREŚĆ, a który STYL?
-     * STYL tekstu: Zdecydowanie lepiej pokazuje wariant ZE STOP WORDS. To słowa
-       funkcyjne, zaimki i spójniki determinują rytm, dynamikę trzynastozgłoskowca,
-       gawędziarski charakter epopei i archaizowaną składnię Mickiewicza.
-     * TREŚĆ (semantykę) tekstu: Zdecydowanie lepiej pokazuje wariant BEZ STOP WORDS.
-       Usuwa szum syntaktyczny i eksponuje to, o czym naprawdę jest utwór – głównych
-       bohaterów, ich dialogi, tytuły i osie konfliktu.
+   - Trigramy bez stop words są sztuczne ('wieku urzędu zaszczyt') – po usunięciu słów
+     funkcyjnych łączą wyrazy, które w oryginale nie stały obok siebie.
+   - STYL lepiej pokazuje wariant ZE STOP WORDS (rytm, składnia, spójniki, 'się').
+     TREŚĆ lepiej pokazuje wariant BEZ STOP WORDS (bohaterowie, miejsca, wątki).
 
-2. Omówienie wyrażenia regularnego i metody wykrywania nazw własnych:
-   - Zastosowano podejście dwuetapowe:
-     1. Podział na zdania (sent_tokenize) – odrzucenie pierwszego słowa zdania
-        (pozycja [0]), w której wielka litera wynika wyłącznie z reguł interpunkcyjnych.
-     2. Regex: r'[A-ZĄĆĘŁŃÓŚŹŻ][a-ząćęłńóśźż]+' weryfikujący kapitalizację pierwszej litery
-        i małe litery w reszcie wyrazu, z filtracją słów funkcyjnych (np. 'Gdy', 'Lecz'),
-        które w tekście poetyckim rozpoczynają nowy wers mimo trwania zdania.
-   - Wyniki: Zidentyfikowano czołowych bohaterów Pana Tadeusza:
-     Sędzia (98), Hrabia (92), Tadeusz (70), Wojski (69), Tadeusza (54),
-     Gerwazy (51), Robak (42), Podkomorzy (41), Klucznik (40), Telimena (38).
+2. Wyrażenie regularne do nazw własnych – opis w komentarzu przy NAME_RE.
+   Kluczowy jest lookbehind: słowo z wielkiej litery musi stać w ŚRODKU wersu, za
+   małą literą lub przecinkiem. To odrzuca początki zdań i wersów kosztem pominięcia
+   nazw, które akurat stoją na początku wersu (lepsza precyzja, gorsza kompletność).
+   Pozostałe błędy to rzeczowniki pisane wielką literą z szacunku ('Bóg', 'Pan')
+   i tytuły używane jak imiona ('Sędzia', 'Hrabia', 'Wojski') – w Panu Tadeuszu
+   pełnią one jednak rolę imion bohaterów.
 """
+

@@ -49,19 +49,27 @@ for i, s in enumerate(sentences, start=1):
 stemmer = SnowballStemmer("english")
 lemmatizer = WordNetLemmatizer()
 
+# WordNetLemmatizer bez podanej części mowy zakłada RZECZOWNIK ('am' -> 'am').
+# Dlatego dodatkowo tagujemy zdanie (nltk.pos_tag) i przekazujemy część mowy.
+nltk.download("averaged_perceptron_tagger_eng", quiet=True)
+
+def wordnet_pos(treebank_tag):
+    return {"J": "a", "V": "v", "R": "r"}.get(treebank_tag[:1], "n")
+
 different_results = []
 
 for number, sentence in enumerate(sentences, start=1):
     tokens = word_tokenize(sentence)
+    tagged = nltk.pos_tag(tokens)
 
     print(f"\n\nZDANIE NUMER {number}: \"{sentence}\"")
 
-    h1, h2, h3 = "TOKEN", "RDZEŃ (STEM)", "LEMAT (LEMMA)"
-    print("=" * 55)
-    print(f"|{h1:^17} | {h2:^17} | {h3:^17}|")
-    print("=" * 55)
+    h1, h2, h3, h4 = "TOKEN", "RDZEŃ (STEM)", "LEMAT (domyślny)", "LEMAT (z POS)"
+    print("=" * 76)
+    print(f"|{h1:^17} | {h2:^17} | {h3:^17} | {h4:^17}|")
+    print("=" * 76)
 
-    for token in tokens:
+    for token, tag in tagged:
         # Pomijanie znaków interpunkcyjnych
         if not token.isalpha():
             continue
@@ -69,12 +77,13 @@ for number, sentence in enumerate(sentences, start=1):
         token_lower = token.lower()
         stem = stemmer.stem(token_lower)
         lemma = lemmatizer.lemmatize(token_lower)
+        lemma_pos = lemmatizer.lemmatize(token_lower, wordnet_pos(tag))
 
-        print(f"|{token:^17} | {stem:^17} | {lemma:^17}|")
-        print("-" * 55)
+        print(f"|{token:^17} | {stem:^17} | {lemma:^17} | {lemma_pos + ' (' + tag + ')':^17}|")
+        print("-" * 76)
 
-        if stem != lemma:
-            different_results.append((token, stem, lemma))
+        if stem != lemma_pos or stem != lemma:
+            different_results.append((token, stem, lemma_pos))
 
 # --------------------------------------------------
 # Zestawienie słów o różnych wynikach (Punkt 4)
@@ -123,6 +132,15 @@ Wyjaśnienie różnic dla wybranych słów:
      w języku angielskim rdzenia 'hast'.
    - Lematyzator weryfikuje słowo w słowniku WordNet i zachowuje poprawną formę
      hasłową (mianownik) 'haste'.
+
+4. 'struck' -> rdzeń: 'struck', lemat z POS: 'strike'   oraz   'am' -> rdzeń: 'am', lemat z POS: 'be'
+   - Formy nieregularne: stemmer nie ma czego obciąć, a lematyzator ze słownikiem WordNet
+     zna odmianę nieregularną – ale TYLKO gdy dostanie część mowy (czasownik). Bez POS
+     WordNetLemmatizer zakłada rzeczownik i zwraca 'struck' / 'am' bez zmian.
+
+5. ''Tis' -> lemat: 'ti' – błąd lematyzatora. Archaiczny skrót 'it is' został uznany za
+   liczbę mnogą rzeczownika 'ti' (nuta w solmizacji). Tagger POS uczony na współczesnym
+   angielskim myli się też przy szekspirowskiej składni (np. 'answer' oznaczone jako IN).
 
 Podsumowanie teoretyczne:
 - Stemming działa algorytmicznie (metodą heurystycznego obcinania prefiksów i sufiksów)

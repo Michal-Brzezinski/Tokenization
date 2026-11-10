@@ -2,6 +2,15 @@ import spacy
 import morfeusz2
 from nltk.stem.snowball import SnowballStemmer
 
+# pystempel (polski stemmer Stempel, znany z Lucene/Elasticsearch) importuje nazwy
+# usunięte z importlib.resources w Pythonie 3.13+. Prosta podkładka przywraca zgodność.
+import importlib.resources as _ir
+if not hasattr(_ir, "Resource"):
+    _ir.Resource = str
+if not hasattr(_ir, "Package"):
+    _ir.Package = str
+from pystempel import Stemmer as StempelStemmer
+
 # ==============================================================================
 # CZĘŚĆ E: POLSZCZYZNA WYMAGA INNYCH NARZĘDZI
 # ==============================================================================
@@ -40,23 +49,33 @@ def simple_polish_stemmer(word: str) -> str:
             return word[:-len(s)]
     return word
 
-h1, h2, h3, h4, h5 = "TOKEN", "LEMAT (spaCy)", "LEMAT (Morfeusz2)", "TAG MORFOSYNTAKTYCZNY", "RDZEŃ (HEUR.)"
+# Stempel – algorytmiczny stemmer dla polszczyzny (tablica reguł wyuczona na słowniku PoliMorf)
+stempel = StempelStemmer.polimorf()
+
+h1, h2, h3, h4, h5, h6, h7 = ("TOKEN", "LEMAT (spaCy)", "LEMAT (Morfeusz2)", "INTERP.",
+                              "TAG MORFOSYNTAKTYCZNY", "STEMPEL", "RDZEŃ (HEUR.)")
 print(f"Fragment: \"{fragment}\"\n")
-print("=" * 95)
-print(f"|{h1:^12} | {h2:^15} | {h3:^18} | {h4:^26} | {h5:^13}|")
-print("=" * 95)
+print("=" * 130)
+print(f"|{h1:^12} | {h2:^14} | {h3:^17} | {h4:^7} | {h5:^34} | {h6:^12} | {h7:^13}|")
+print("=" * 130)
 
 for token in doc:
     if token.is_alpha:
-        # Analiza Morfeusz2 (Słownik Gramatyczny Języka Polskiego)
-        morf_res = morfeusz.analyse(token.text)
-        first_interp = morf_res[0][2]
-        morf_lemma = first_interp[1].split(":")[0]  # usunięcie kwalifikatorów
-        morf_tag = first_interp[2]
+        # Analiza Morfeusz2 (Słownik Gramatyczny Języka Polskiego).
+        # Morfeusz NIE ujednoznacznia – zwraca wszystkie możliwe interpretacje.
+        # Wybieramy tę, której lemat zgadza się z lematem spaCy (kontekst),
+        # a gdy takiej nie ma – pierwszą z listy.
+        interps = [r[2] for r in morfeusz.analyse(token.text)]
+        chosen = next((i for i in interps
+                       if i[1].split(":")[0].lower() == token.lemma_.lower()), interps[0])
+        morf_lemma = chosen[1].split(":")[0]  # usunięcie kwalifikatorów
+        morf_tag = chosen[2]
 
+        stempel_stem = stempel(token.text.lower()) or "—"
         stem = simple_polish_stemmer(token.text)
-        print(f"|{token.text:^12} | {token.lemma_:^15} | {morf_lemma:^18} | {morf_tag:<26} | {stem:^13}|")
-        print("-" * 95)
+        print(f"|{token.text:^12} | {token.lemma_:^14} | {morf_lemma:^17} | {len(interps):^7} | "
+              f"{morf_tag:<34} | {stempel_stem:^12} | {stem:^13}|")
+        print("-" * 130)
 
 # --------------------------------------------------
 # 2. Zastosowanie angielskiego stemmera do polskich słów
